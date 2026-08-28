@@ -1290,6 +1290,17 @@ void AppSettings::setMainWindowGeometry(const QByteArray &geometry)
     m_settings->setValue(QStringLiteral("MainWindow/WindowGeometry"), geometry);
 }
 
+// Stored separately because QWidget::restoreGeometry() discards the whole blob when the screen size changed
+QSize AppSettings::mainWindowSize() const
+{
+    return m_settings->value(QStringLiteral("MainWindow/WindowSize")).toSize();
+}
+
+void AppSettings::setMainWindowSize(QSize size)
+{
+    m_settings->setValue(QStringLiteral("MainWindow/WindowSize"), size);
+}
+
 bool AppSettings::isAutoTranslateEnabled() const
 {
     return m_settings->value(QStringLiteral("MainWindow/AutoTranslate"), false).toBool();

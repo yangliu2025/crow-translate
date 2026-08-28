@@ -28,6 +28,7 @@
 #include <QScreen>
 #include <QTimer>
 #include <QToolButton>
+#include <QWindow>
 
 using namespace std::chrono_literals;
 
@@ -450,6 +451,12 @@ void LanguageButtonsWidget::checkAvailableScreenWidth()
 {
     // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
     if (ScreenWatcher::isWidthFitScreen(window()))
+        return;
+
+    // Frame geometry is not meaningful until the window manager maps the window, and acting on it
+    // at that point shrinks a correctly restored window down to its minimum width
+    const QWindow *handle = window()->windowHandle();
+    if (handle == nullptr || !handle->isExposed())
         return;
 
     // Try resize first

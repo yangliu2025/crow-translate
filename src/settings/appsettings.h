@@ -376,6 +376,9 @@ public:
     QByteArray mainWindowGeometry() const;
     void setMainWindowGeometry(const QByteArray &geometry);
 
+    QSize mainWindowSize() const;
+    void setMainWindowSize(QSize size);
+
     bool isAutoTranslateEnabled() const;
     void setAutoTranslateEnabled(bool enable);
 

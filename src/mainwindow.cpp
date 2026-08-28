@@ -44,7 +44,9 @@
 #endif
 
 #include <QClipboard>
+#include <QCloseEvent>
 #include <QFinalState>
+#include <QGuiApplication>
 #include <QMediaPlaylist>
 #include <QMessageBox>
 #include <QNetworkProxyFactory>
@@ -144,7 +146,7 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow()
 {
     AppSettings settings;
-    settings.setMainWindowGeometry(saveGeometry());
+    saveMainWindowGeometry();
     settings.setAutoTranslateEnabled(ui->autoTranslateCheckBox->isChecked());
     settings.setCurrentEngine(currentEngine());
     settings.setLanguages(AppSettings::Source, ui->sourceLanguagesWidget->languages());
@@ -606,6 +608,13 @@ void MainWindow::changeEvent(QEvent *event)
     }
 }
 
+// The tray icon keeps the process alive after closing, so persist here instead of relying on the destructor
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    saveMainWindowGeometry();
+    QMainWindow::closeEvent(event);
+}
+
 void MainWindow::buildStateMachine()
 {
     m_stateMachine->setGlobalRestorePolicy(QStateMachine::RestoreProperties);
@@ -909,7 +918,13 @@ void MainWindow::loadMainWindowSettings()
     ui->translationLanguagesWidget->checkButton(settings.checkedButton(AppSettings::Translation));
     ui->sourceLanguagesWidget->checkButton(settings.checkedButton(AppSettings::Source));
 
-    restoreGeometry(settings.mainWindowGeometry());
+    // Qt discards the saved geometry when the screen size changed by more than 25% since the last
+    // run (resolution or HiDPI scale change), which would leave the window at its designer size
+    if (!restoreGeometry(settings.mainWindowGeometry())) {
+        if (const QSize savedSize = settings.mainWindowSize(); savedSize.isValid())
+            resize(savedSize.boundedTo(QGuiApplication::primaryScreen()->availableGeometry().size()));
+    }
+
     if (!settings.isShowTrayIcon() || !settings.isStartMinimized()) {
         show();
         ui->sourceEdit->setFocus();
@@ -939,6 +954,13 @@ void MainWindow::loadMainWindowSettings()
         release->get(QStringLiteral("crow-translate"), QStringLiteral("crow-translate"));
     }
 #endif
+}
+
+void MainWindow::saveMainWindowGeometry() const
+{
+    AppSettings settings;
+    settings.setMainWindowGeometry(saveGeometry());
+    settings.setMainWindowSize(normalGeometry().size());
 }
 
 void MainWindow::loadAppSettings()

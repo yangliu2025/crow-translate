@@ -140,6 +140,7 @@ private slots:
 
 private:
     void changeEvent(QEvent *event) override;
+    void closeEvent(QCloseEvent *event) override;
 
     void buildStateMachine();
 
@@ -163,6 +164,7 @@ private:
 
     // Other helpers
     void loadMainWindowSettings();
+    void saveMainWindowGeometry() const;
     void loadAppSettings();
     void checkLanguageButton(int checkedId);
 
