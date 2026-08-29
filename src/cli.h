@@ -27,10 +27,12 @@
 #include <QVector>
 
 class QCoreApplication;
+class EdgeTts;
 class QMediaPlayer;
 class QStateMachine;
 class QCommandLineParser;
 class QCommandLineOption;
+class QTemporaryFile;
 
 class Cli : public QObject
 {
@@ -61,6 +63,8 @@ private:
 
     // Helpers
     void speak(const QString &text, QOnlineTranslator::Language lang);
+    void playEdgeAudio(const QByteArray &audio);
+    void handleEdgeTtsError(const QString &message);
     static void checkIncompatibleOptions(QCommandLineParser &parser, const QCommandLineOption &option1, const QCommandLineOption &option2);
 
     static QByteArray readFilesFromStdin();
@@ -69,6 +73,8 @@ private:
     static constexpr char s_langProperty[] = "Language";
 
     QMediaPlayer *m_player;
+    EdgeTts *m_edgeTts;
+    QTemporaryFile *m_edgeAudioFile = nullptr;
     QOnlineTranslator *m_translator;
     QStateMachine *m_stateMachine;
     QTextStream m_stdout{stdout};

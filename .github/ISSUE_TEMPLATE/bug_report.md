@@ -26,8 +26,8 @@ assignees: ''
 
 **Environment**
 
-- OS: <!-- (e.g. Arch Linux, Ubuntu, Windows) -->
-- Desktop environment: <!-- (only for Linux, e.g. KDE, Gnome) -->
+- Linux distribution: <!-- (e.g. Arch Linux, Ubuntu) -->
+- Desktop environment: <!-- (e.g. KDE, GNOME) -->
 - Crow Translate version: <!-- (e.g. 2.3.0) -->
 
 **Additional context**

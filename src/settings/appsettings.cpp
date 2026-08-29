@@ -71,11 +71,7 @@ void AppSettings::setLocale(const QLocale &locale)
 
 void AppSettings::applyLocale(const QLocale &locale)
 {
-#ifdef Q_OS_DARWIN
-    const QString i18nDir = QStringLiteral(".");
-#else
     const QString i18nDir = QStringLiteral("translations");
-#endif
     const QLocale newLocale = locale == defaultLocale() ? QLocale::system() : locale;
     QLocale::setDefault(newLocale);
     s_appTranslator.load(newLocale, QStringLiteral(PROJECT_NAME), QStringLiteral("_"), QStandardPaths::locate(QStandardPaths::AppDataLocation, i18nDir, QStandardPaths::LocateDirectory));
@@ -159,11 +155,9 @@ void AppSettings::setShowTrayIcon(bool visible)
 
 bool AppSettings::defaultShowTrayIcon()
 {
-#ifdef Q_OS_LINUX
     // Plasma Mobile currently says that system tray is available by mistake https://invent.kde.org/plasma/plasma-nano/-/issues/1
     if (const QByteArray plasmaPlatform = qgetenv("PLASMA_PLATFORM"); plasmaPlatform.contains("phone"))
         return false;
-#endif
     return QSystemTrayIcon::isSystemTrayAvailable();
 }
 
@@ -223,33 +217,6 @@ QString AppSettings::portableConfigName()
     // Initialize lazily because `QCoreApplication::applicationDirPath()` should be called after app creation
     static const QString portableConfigName = QCoreApplication::applicationDirPath() + "/" + QStringLiteral("settings.ini");
     return portableConfigName;
-}
-#endif
-
-#ifdef Q_OS_WIN
-AppSettings::Interval AppSettings::checkForUpdatesInterval() const
-{
-    return m_settings->value(QStringLiteral("CheckForUpdatesInterval"), defaultCheckForUpdatesInterval()).value<Interval>();
-}
-
-void AppSettings::setCheckForUpdatesInterval(AppSettings::Interval interval)
-{
-    m_settings->setValue(QStringLiteral("CheckForUpdatesInterval"), interval);
-}
-
-AppSettings::Interval AppSettings::defaultCheckForUpdatesInterval()
-{
-    return Month;
-}
-
-QDate AppSettings::lastUpdateCheckDate() const
-{
-    return m_settings->value(QStringLiteral("LastUpdateCheckDate"), QDate::currentDate()).toDate();
-}
-
-void AppSettings::setLastUpdateCheckDate(const QDate &date)
-{
-    m_settings->setValue(QStringLiteral("LastUpdateCheckDate"), date);
 }
 #endif
 
@@ -520,155 +487,35 @@ bool AppSettings::defaultForceTranslationAutodetect()
 
 QString AppSettings::engineUrl(QOnlineTranslator::Engine engine) const
 {
-    switch (engine) {
-    case QOnlineTranslator::LibreTranslate:
-        return m_settings->value(QStringLiteral("Translation/LibreTranslateUrl"), defaultEngineUrl(engine)).toString();
-    case QOnlineTranslator::Lingva:
-        return m_settings->value(QStringLiteral("Translation/LingvaUrl"), defaultEngineUrl(engine)).toString();
-    default:
-        Q_UNREACHABLE();
-    }
+    Q_ASSERT(engine == QOnlineTranslator::Mozhi);
+    return m_settings->value(QStringLiteral("Translation/MozhiUrl"), defaultEngineUrl(engine)).toString();
 }
 
 void AppSettings::setEngineUrl(QOnlineTranslator::Engine engine, const QString &url)
 {
-    switch (engine) {
-    case QOnlineTranslator::LibreTranslate:
-        m_settings->setValue(QStringLiteral("Translation/LibreTranslateUrl"), url);
-        break;
-    case QOnlineTranslator::Lingva:
-        m_settings->setValue(QStringLiteral("Translation/LingvaUrl"), url);
-        break;
-    default:
-        Q_UNREACHABLE();
-    }
+    Q_ASSERT(engine == QOnlineTranslator::Mozhi);
+    m_settings->setValue(QStringLiteral("Translation/MozhiUrl"), url);
 }
 
 QString AppSettings::defaultEngineUrl(QOnlineTranslator::Engine engine)
 {
-    switch (engine) {
-    case QOnlineTranslator::LibreTranslate:
-        return QStringLiteral("https://translate.argosopentech.com");
-    case QOnlineTranslator::Lingva:
-        return QStringLiteral("https://lingva.garudalinux.org");
-    default:
-        Q_UNREACHABLE();
-    }
+    Q_ASSERT(engine == QOnlineTranslator::Mozhi);
+    return QStringLiteral("https://mozhi.pussthecat.org");
 }
 
-QByteArray AppSettings::engineApiKey(QOnlineTranslator::Engine engine) const
+QString AppSettings::mozhiEngine() const
 {
-    switch (engine) {
-    case QOnlineTranslator::LibreTranslate:
-        return m_settings->value(QStringLiteral("Translation/LibreTranslateApiKey"), defaultEngineApiKey(engine)).toByteArray();
-    default:
-        Q_UNREACHABLE();
-    }
+    return m_settings->value(QStringLiteral("Translation/MozhiEngine"), defaultMozhiEngine()).toString();
 }
 
-void AppSettings::setEngineApiKey(QOnlineTranslator::Engine engine, const QByteArray &apiKey)
+void AppSettings::setMozhiEngine(const QString &engine)
 {
-    switch (engine) {
-    case QOnlineTranslator::LibreTranslate:
-        m_settings->setValue(QStringLiteral("Translation/LibreTranslateApiKey"), apiKey);
-        break;
-    default:
-        Q_UNREACHABLE();
-    }
+    m_settings->setValue(QStringLiteral("Translation/MozhiEngine"), engine);
 }
 
-QByteArray AppSettings::defaultEngineApiKey(QOnlineTranslator::Engine engine)
+QString AppSettings::defaultMozhiEngine()
 {
-    switch (engine) {
-    case QOnlineTranslator::LibreTranslate:
-        return {};
-    default:
-        Q_UNREACHABLE();
-    }
-}
-
-QOnlineTts::Voice AppSettings::voice(QOnlineTranslator::Engine engine) const
-{
-    switch (engine) {
-    case QOnlineTranslator::Google:
-    case QOnlineTranslator::Bing:
-    case QOnlineTranslator::LibreTranslate:
-    case QOnlineTranslator::Lingva:
-        return QOnlineTts::NoVoice;
-    case QOnlineTranslator::Yandex:
-        return m_settings->value(QStringLiteral("TTS/YandexVoice"), defaultVoice(engine)).value<QOnlineTts::Voice>();
-    default:
-        Q_UNREACHABLE();
-    }
-}
-
-void AppSettings::setVoice(QOnlineTranslator::Engine engine, QOnlineTts::Voice voice)
-{
-    switch (engine) {
-    case QOnlineTranslator::Yandex:
-        m_settings->setValue(QStringLiteral("TTS/YandexVoice"), voice);
-        return;
-    default:
-        // Currently only Yandex have voice settings
-        Q_UNREACHABLE();
-    }
-}
-
-QOnlineTts::Voice AppSettings::defaultVoice(QOnlineTranslator::Engine engine)
-{
-    switch (engine) {
-    case QOnlineTranslator::Google:
-    case QOnlineTranslator::Bing:
-    case QOnlineTranslator::LibreTranslate:
-    case QOnlineTranslator::Lingva:
-        return QOnlineTts::NoVoice;
-    case QOnlineTranslator::Yandex:
-        return QOnlineTts::Zahar;
-    default:
-        Q_UNREACHABLE();
-    }
-}
-
-QOnlineTts::Emotion AppSettings::emotion(QOnlineTranslator::Engine engine) const
-{
-    switch (engine) {
-    case QOnlineTranslator::Google:
-    case QOnlineTranslator::Bing:
-    case QOnlineTranslator::LibreTranslate:
-    case QOnlineTranslator::Lingva:
-        return QOnlineTts::NoEmotion;
-    case QOnlineTranslator::Yandex:
-        return m_settings->value(QStringLiteral("TTS/YandexEmotion"), defaultEmotion(engine)).value<QOnlineTts::Emotion>();
-    default:
-        Q_UNREACHABLE();
-    }
-}
-
-void AppSettings::setEmotion(QOnlineTranslator::Engine engine, QOnlineTts::Emotion emotion)
-{
-    switch (engine) {
-    case QOnlineTranslator::Yandex:
-        m_settings->setValue(QStringLiteral("TTS/YandexEmotion"), emotion);
-        return;
-    default:
-        // Currently only Yandex have emotion settings
-        Q_UNREACHABLE();
-    }
-}
-
-QOnlineTts::Emotion AppSettings::defaultEmotion(QOnlineTranslator::Engine engine)
-{
-    switch (engine) {
-    case QOnlineTranslator::Google:
-    case QOnlineTranslator::Bing:
-    case QOnlineTranslator::LibreTranslate:
-    case QOnlineTranslator::Lingva:
-        return QOnlineTts::NoEmotion;
-    case QOnlineTranslator::Yandex:
-        return QOnlineTts::Neutral;
-    default:
-        Q_UNREACHABLE();
-    }
+    return QStringLiteral("google");
 }
 
 QMap<QOnlineTranslator::Language, QLocale::Country> AppSettings::regions(QOnlineTranslator::Engine engine) const
@@ -682,9 +529,7 @@ QMap<QOnlineTranslator::Language, QLocale::Country> AppSettings::regions(QOnline
         return regions;
     }
     case QOnlineTranslator::Bing:
-    case QOnlineTranslator::Yandex:
-    case QOnlineTranslator::LibreTranslate:
-    case QOnlineTranslator::Lingva:
+    case QOnlineTranslator::Mozhi:
         return {};
     default:
         Q_UNREACHABLE();
@@ -712,9 +557,7 @@ QMap<QOnlineTranslator::Language, QLocale::Country> AppSettings::defaultRegions(
     switch (engine) {
     case QOnlineTranslator::Google:
     case QOnlineTranslator::Bing:
-    case QOnlineTranslator::Yandex:
-    case QOnlineTranslator::LibreTranslate:
-    case QOnlineTranslator::Lingva:
+    case QOnlineTranslator::Mozhi:
         return {};
     default:
         Q_UNREACHABLE();
@@ -1313,7 +1156,10 @@ void AppSettings::setAutoTranslateEnabled(bool enable)
 
 QOnlineTranslator::Engine AppSettings::currentEngine() const
 {
-    return m_settings->value(QStringLiteral("MainWindow/CurrentEngine"), QOnlineTranslator::Google).value<QOnlineTranslator::Engine>();
+    const auto engine = m_settings->value(QStringLiteral("MainWindow/CurrentEngine"), QOnlineTranslator::Google).value<QOnlineTranslator::Engine>();
+    if (engine == QOnlineTranslator::Google || engine == QOnlineTranslator::Bing || engine == QOnlineTranslator::Mozhi)
+        return engine;
+    return QOnlineTranslator::Google;
 }
 
 void AppSettings::setCurrentEngine(QOnlineTranslator::Engine currentEngine)

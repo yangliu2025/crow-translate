@@ -19,11 +19,13 @@
 
 #include "cli.h"
 
+#include "edgetts.h"
 #include "qonlinetts.h"
 #include "settings/appsettings.h"
 #include "transitions/playerstoppedtransition.h"
 
 #include <QCommandLineParser>
+#include <QDir>
 #include <QFile>
 #include <QFinalState>
 #include <QJsonDocument>
@@ -31,14 +33,19 @@
 #include <QMediaPlaylist>
 #include <QRegularExpression>
 #include <QStateMachine>
+#include <QTemporaryFile>
 
 Cli::Cli(QObject *parent)
     : QObject(parent)
     , m_player(new QMediaPlayer(this))
+    , m_edgeTts(new EdgeTts(this))
     , m_translator(new QOnlineTranslator(this))
     , m_stateMachine(new QStateMachine(this))
 {
     m_player->setPlaylist(new QMediaPlaylist);
+
+    connect(m_edgeTts, &EdgeTts::audioReady, this, &Cli::playEdgeAudio);
+    connect(m_edgeTts, &EdgeTts::error, this, &Cli::handleEdgeTtsError);
 
     connect(m_stateMachine, &QStateMachine::finished, QCoreApplication::instance(), &QCoreApplication::quit, Qt::QueuedConnection);
     // clang-format off
@@ -54,7 +61,7 @@ void Cli::process(const QCoreApplication &app)
     const QCommandLineOption source({"s", "source"}, tr("Specify the source language (by default, engine will try to determine the language on its own)."), QStringLiteral("code"), QStringLiteral("auto"));
     const QCommandLineOption translation({"t", "translation"}, tr("Specify the translation language(s), splitted by '+' (by default, the system language is used)."), QStringLiteral("code"), QStringLiteral("auto"));
     const QCommandLineOption locale({"l", "locale"}, tr("Specify the translator language (by default, the system language is used)."), QStringLiteral("code"), QStringLiteral("auto"));
-    const QCommandLineOption engine({"e", "engine"}, tr("Specify the translator engine ('google', 'yandex', 'bing', 'libretranslate' or 'lingva'), Google is used by default."), QStringLiteral("engine"), QStringLiteral("google"));
+    const QCommandLineOption engine({"e", "engine"}, tr("Specify the translator engine ('google', 'bing' or 'mozhi'), Google is used by default."), QStringLiteral("engine"), QStringLiteral("google"));
     const QCommandLineOption speakTranslation({"p", "speak-translation"}, tr("Speak the translation."));
     const QCommandLineOption speakSource({"u", "speak-source"}, tr("Speak the source."));
     const QCommandLineOption file({"f", "file"}, tr("Read source text from files. Arguments will be interpreted as file paths."));
@@ -64,7 +71,7 @@ void Cli::process(const QCoreApplication &app)
     const QCommandLineOption json({"j", "json"}, tr("Print output formatted as JSON."));
 
     QCommandLineParser parser;
-    parser.setApplicationDescription(tr("A simple and lightweight translator that allows to translate and speak text using Google, Yandex, Bing, LibreTranslate and Lingva"));
+    parser.setApplicationDescription(tr("A simple and lightweight translator that supports Google, Bing and Mozhi"));
     parser.addPositionalArgument(QStringLiteral("text"), tr("Text to translate. By default, the translation will be done to the system language."));
     parser.addHelpOption();
     parser.addVersionOption();
@@ -128,16 +135,13 @@ void Cli::process(const QCoreApplication &app)
     // Engine
     if (parser.value(engine) == QLatin1String("google")) {
         m_engine = QOnlineTranslator::Google;
-    } else if (parser.value(engine) == QLatin1String("yandex")) {
-        m_engine = QOnlineTranslator::Yandex;
     } else if (parser.value(engine) == QLatin1String("bing")) {
         m_engine = QOnlineTranslator::Bing;
-    } else if (parser.value(engine) == QLatin1String("libretranslate")) {
-        m_engine = QOnlineTranslator::LibreTranslate;
-        m_translator->setEngineUrl(QOnlineTranslator::Engine::LibreTranslate, AppSettings().engineUrl(QOnlineTranslator::Engine::LibreTranslate));
-    } else if (parser.value(engine) == QLatin1String("lingva")) {
-        m_engine = QOnlineTranslator::Lingva;
-        m_translator->setEngineUrl(QOnlineTranslator::Engine::Lingva, AppSettings().engineUrl(QOnlineTranslator::Engine::Lingva));
+    } else if (parser.value(engine) == QLatin1String("mozhi")) {
+        const AppSettings settings;
+        m_engine = QOnlineTranslator::Mozhi;
+        m_translator->setEngineUrl(QOnlineTranslator::Mozhi, settings.engineUrl(QOnlineTranslator::Mozhi));
+        m_translator->setMozhiEngine(settings.mozhiEngine());
     } else {
         qCritical() << tr("Error: Unknown engine") << '\n';
         parser.showHelp();
@@ -310,9 +314,15 @@ void Cli::buildTranslationStateMachine()
         auto *speakTranslation = new QState(m_stateMachine);
         nextTranslationState = new QState(m_stateMachine);
 
-        if (m_audioOnly && m_speakSource && !m_speakTranslation && m_sourceLang == QOnlineTranslator::Auto) {
-            connect(requestTranslationState, &QState::entered, this, &Cli::requestLanguage);
-            connect(parseDataState, &QState::entered, this, &Cli::parseLanguage);
+        const bool sourceSpeechOnly = m_audioOnly && m_speakSource && !m_speakTranslation;
+        if (sourceSpeechOnly) {
+            if (m_sourceLang == QOnlineTranslator::Auto) {
+                connect(requestTranslationState, &QState::entered, this, &Cli::requestLanguage);
+                connect(parseDataState, &QState::entered, this, &Cli::parseLanguage);
+                requestTranslationState->addTransition(m_translator, &QOnlineTranslator::finished, parseDataState);
+            } else {
+                requestTranslationState->addTransition(parseDataState);
+            }
         } else {
             connect(requestTranslationState, &QState::entered, this, &Cli::requestTranslation);
             connect(parseDataState, &QState::entered, this, &Cli::parseTranslation);
@@ -320,9 +330,9 @@ void Cli::buildTranslationStateMachine()
                 connect(parseDataState, &QState::entered, this, &Cli::printTranslation);
 
             requestTranslationState->setProperty(s_langProperty, lang);
+            requestTranslationState->addTransition(m_translator, &QOnlineTranslator::finished, parseDataState);
         }
 
-        requestTranslationState->addTransition(m_translator, &QOnlineTranslator::finished, parseDataState);
         parseDataState->addTransition(speakSourceText);
 
         if (m_speakSource) {
@@ -349,6 +359,11 @@ void Cli::buildTranslationStateMachine()
 
 void Cli::speak(const QString &text, QOnlineTranslator::Language lang)
 {
+    if (m_engine == QOnlineTranslator::Bing || m_engine == QOnlineTranslator::Mozhi) {
+        m_edgeTts->synthesize(text, lang);
+        return;
+    }
+
     QOnlineTts tts;
     tts.generateUrls(text, m_engine, lang);
     if (tts.error() != QOnlineTts::NoError) {
@@ -360,6 +375,27 @@ void Cli::speak(const QString &text, QOnlineTranslator::Language lang)
     m_player->playlist()->clear();
     m_player->playlist()->addMedia(tts.media());
     m_player->play();
+}
+
+void Cli::playEdgeAudio(const QByteArray &audio)
+{
+    m_player->playlist()->clear();
+    delete m_edgeAudioFile;
+    m_edgeAudioFile = new QTemporaryFile(QDir::tempPath() + QStringLiteral("/crow-edge-tts-XXXXXX.mp3"), this);
+    if (!m_edgeAudioFile->open() || m_edgeAudioFile->write(audio) != audio.size()) {
+        handleEdgeTtsError(tr("Unable to create a temporary audio file"));
+        return;
+    }
+    m_edgeAudioFile->close();
+
+    m_player->playlist()->addMedia(QUrl::fromLocalFile(m_edgeAudioFile->fileName()));
+    m_player->play();
+}
+
+void Cli::handleEdgeTtsError(const QString &message)
+{
+    qCritical() << tr("Error: %1").arg(message);
+    m_stateMachine->stop();
 }
 
 void Cli::checkIncompatibleOptions(QCommandLineParser &parser, const QCommandLineOption &option1, const QCommandLineOption &option2)

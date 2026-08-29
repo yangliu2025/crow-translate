@@ -22,11 +22,6 @@
 
 #include <QObject>
 
-#ifdef Q_OS_WIN
-class QTimer;
-class QMimeData;
-#endif
-
 class Selection : public QObject
 {
     Q_OBJECT
@@ -48,12 +43,6 @@ protected:
 
 private slots:
     void getSelection();
-
-#ifdef Q_OS_WIN
-private:
-    QScopedPointer<QMimeData> m_originalClipboardData;
-    QTimer *m_maxSelectionDelay;
-#endif
 };
 
 #endif // SELECTION_H

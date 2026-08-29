@@ -22,7 +22,6 @@
 
 #include "popupwindow.h"
 #include "qhotkey.h"
-#include "qtaskbarcontrol.h"
 #include "screenwatcher.h"
 #include "selection.h"
 #include "singleapplication.h"
@@ -38,10 +37,6 @@
 #include "transitions/textemptytransition.h"
 #include "transitions/translatorabortedtransition.h"
 #include "transitions/translatorerrortransition.h"
-#ifdef Q_OS_WIN
-#include "qgittag.h"
-#include "updaterdialog.h"
-#endif
 
 #include <QClipboard>
 #include <QCloseEvent>
@@ -54,9 +49,7 @@
 #include <QShortcut>
 #include <QStateMachine>
 #include <QTimer>
-#ifdef Q_OS_LINUX
 #include <QX11Info>
-#endif
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -76,7 +69,6 @@ MainWindow::MainWindow(QWidget *parent)
     , m_stateMachine(new QStateMachine(this))
     , m_translator(new QOnlineTranslator(this))
     , m_trayIcon(new TrayIcon(this))
-    , m_taskbar(new QTaskbarControl(this))
     , m_ocr(new Ocr(this))
     , m_screenCaptureTimer(new QTimer(this))
     , m_orientationWatcher(new ScreenWatcher(this))
@@ -84,6 +76,10 @@ MainWindow::MainWindow(QWidget *parent)
     , m_snippingArea(new SnippingArea(this))
 {
     ui->setupUi(this);
+
+    ui->engineComboBox->setItemData(0, QOnlineTranslator::Google);
+    ui->engineComboBox->setItemData(1, QOnlineTranslator::Bing);
+    ui->engineComboBox->setItemData(2, QOnlineTranslator::Mozhi);
 
     // Screen orientation
     connect(m_orientationWatcher, &ScreenWatcher::screenOrientationChanged, this, &MainWindow::setOrientation);
@@ -93,12 +89,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Selection requests
     connect(&Selection::instance(), &Selection::requestedSelectionAvailable, ui->sourceEdit, &SourceTextEdit::replaceText);
-
-    // Taskbar progress for text speaking
-    connect(ui->sourceSpeakButtons, &SpeakButtons::stateChanged, this, &MainWindow::setTaskbarState);
-    connect(ui->translationSpeakButtons, &SpeakButtons::stateChanged, this, &MainWindow::setTaskbarState);
-    connect(ui->sourceSpeakButtons, &SpeakButtons::positionChanged, m_taskbar, &QTaskbarControl::setProgress);
-    connect(ui->translationSpeakButtons, &SpeakButtons::positionChanged, m_taskbar, &QTaskbarControl::setProgress);
 
     // Shortcuts
     connect(m_closeWindowsShortcut, &QShortcut::activated, this, &MainWindow::close);
@@ -124,11 +114,6 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_snippingArea, &SnippingArea::snipped, m_ocr, &Ocr::recognize);
     connect(m_ocr, &Ocr::recognized, ui->sourceEdit, &SourceTextEdit::replaceText);
     m_screenCaptureTimer->setSingleShot(true);
-
-#if defined(Q_OS_WIN)
-    // Windows must have a widget be set to display a playback progress
-    m_taskbar->setWidget(this);
-#endif
 
     // Setup players for speak buttons
     ui->sourceSpeakButtons->setMediaPlayer(new QMediaPlayer);
@@ -515,29 +500,6 @@ void MainWindow::resetAutoSourceButtonText()
     ui->sourceLanguagesWidget->setAutoLanguage(QOnlineTranslator::Auto);
 }
 
-void MainWindow::setTaskbarState(QMediaPlayer::State state)
-{
-    switch (state) {
-    case QMediaPlayer::PlayingState:
-        m_taskbar->setProgressVisible(true);
-#if defined(Q_OS_WIN)
-        m_taskbar->setWindowsProgressState(QTaskbarControl::Running);
-#endif
-        break;
-    case QMediaPlayer::PausedState:
-#if defined(Q_OS_WIN)
-        m_taskbar->setWindowsProgressState(QTaskbarControl::Paused);
-#endif
-        break;
-    case QMediaPlayer::StoppedState:
-        m_taskbar->setProgressVisible(false);
-#if defined(Q_OS_WIN)
-        m_taskbar->setWindowsProgressState(QTaskbarControl::Stopped);
-#endif
-        break;
-    }
-}
-
 void MainWindow::setOrientation(Qt::ScreenOrientation orientation)
 {
     if (orientation == Qt::PrimaryOrientation)
@@ -568,26 +530,6 @@ void MainWindow::setOrientation(Qt::ScreenOrientation orientation)
         Q_UNREACHABLE(); // Will never be called with Qt::PrimaryOrientation
     }
 }
-
-#ifdef Q_OS_WIN
-void MainWindow::checkForUpdates()
-{
-    auto *release = qobject_cast<QGitTag *>(sender());
-    release->deleteLater();
-    if (release->error())
-        return;
-
-    const int installer = release->assetId(".exe");
-    if (installer != -1 && QCoreApplication::applicationVersion() < release->tagName()) {
-        auto *updater = new UpdaterDialog(release, installer, this);
-        updater->setAttribute(Qt::WA_DeleteOnClose);
-        updater->open();
-    }
-
-    AppSettings settings;
-    settings.setLastUpdateCheckDate(QDate::currentDate());
-}
-#endif
 
 void MainWindow::changeEvent(QEvent *event)
 {
@@ -743,11 +685,7 @@ void MainWindow::buildTranslateSelectionState(QState *state) const
     auto *finalState = new QFinalState(state);
 
     // On Wayland, the clipboard/selection content can only be obtained only after the window becomes active
-#ifdef Q_OS_LINUX
     const bool waitForClipboard = !QX11Info::isPlatformX11();
-#else
-    const bool waitForClipboard = false;
-#endif
     if (waitForClipboard)
         state->setInitialState(showWindowState);
     else
@@ -912,7 +850,7 @@ void MainWindow::loadMainWindowSettings()
 {
     const AppSettings settings;
     ui->autoTranslateCheckBox->setChecked(settings.isAutoTranslateEnabled());
-    ui->engineComboBox->setCurrentIndex(settings.currentEngine());
+    ui->engineComboBox->setCurrentIndex(ui->engineComboBox->findData(settings.currentEngine()));
     ui->sourceLanguagesWidget->setLanguages(settings.languages(AppSettings::Source));
     ui->translationLanguagesWidget->setLanguages(settings.languages(AppSettings::Translation));
     ui->translationLanguagesWidget->checkButton(settings.checkedButton(AppSettings::Translation));
@@ -929,31 +867,6 @@ void MainWindow::loadMainWindowSettings()
         show();
         ui->sourceEdit->setFocus();
     }
-
-#ifdef Q_OS_WIN
-    // Check date for updates
-    const AppSettings::Interval updateInterval = settings.checkForUpdatesInterval();
-    QDate checkDate = settings.lastUpdateCheckDate();
-    switch (updateInterval) {
-    case AppSettings::Day:
-        checkDate = checkDate.addDays(1);
-        break;
-    case AppSettings::Week:
-        checkDate = checkDate.addDays(7);
-        break;
-    case AppSettings::Month:
-        checkDate = checkDate.addMonths(1);
-        break;
-    case AppSettings::Never:
-        return;
-    }
-
-    if (QDate::currentDate() >= checkDate) {
-        auto *release = new QGitTag(this);
-        connect(release, &QGitTag::finished, this, &MainWindow::checkForUpdates);
-        release->get(QStringLiteral("crow-translate"), QStringLiteral("crow-translate"));
-    }
-#endif
 }
 
 void MainWindow::saveMainWindowGeometry() const
@@ -1006,9 +919,8 @@ void MainWindow::loadAppSettings()
     m_forceTranslationAutodetect = settings.isForceTranslationAutodetect();
 
     // Engine settings
-    m_translator->setEngineUrl(QOnlineTranslator::LibreTranslate, settings.engineUrl(QOnlineTranslator::LibreTranslate));
-    m_translator->setEngineApiKey(QOnlineTranslator::LibreTranslate, settings.engineApiKey(QOnlineTranslator::LibreTranslate));
-    m_translator->setEngineUrl(QOnlineTranslator::Lingva, settings.engineUrl(QOnlineTranslator::Lingva));
+    m_translator->setEngineUrl(QOnlineTranslator::Mozhi, settings.engineUrl(QOnlineTranslator::Mozhi));
+    m_translator->setMozhiEngine(settings.mozhiEngine());
 
     // OCR settings
     if (const QByteArray languages = settings.ocrLanguagesString(), path = settings.ocrLanguagesPath(); !m_ocr->init(languages, path, settings.tesseractParameters())) {
@@ -1029,11 +941,7 @@ void MainWindow::loadAppSettings()
     m_snippingArea->setApplyLightMask(settings.isApplyLightMask());
 
     // TTS
-    ui->sourceSpeakButtons->setVoice(QOnlineTranslator::Yandex, settings.voice(QOnlineTranslator::Yandex));
-    ui->sourceSpeakButtons->setEmotion(QOnlineTranslator::Yandex, settings.emotion(QOnlineTranslator::Yandex));
     ui->sourceSpeakButtons->setRegions(QOnlineTranslator::Google, settings.regions(QOnlineTranslator::Google));
-    ui->translationSpeakButtons->setVoice(QOnlineTranslator::Yandex, settings.voice(QOnlineTranslator::Yandex));
-    ui->translationSpeakButtons->setEmotion(QOnlineTranslator::Yandex, settings.emotion(QOnlineTranslator::Yandex));
     ui->translationSpeakButtons->setRegions(QOnlineTranslator::Google, settings.regions(QOnlineTranslator::Google));
 
     // Connection
@@ -1113,7 +1021,8 @@ void MainWindow::checkLanguageButton(int checkedId)
     // Check if selected language is supported by engine
     if (!QOnlineTranslator::isSupportTranslation(currentEngine(), checkedLang)) {
         for (int i = 0; i < ui->engineComboBox->count(); ++i) {
-            if (QOnlineTranslator::isSupportTranslation(static_cast<QOnlineTranslator::Engine>(i), checkedLang)) {
+            const auto engine = ui->engineComboBox->itemData(i).value<QOnlineTranslator::Engine>();
+            if (QOnlineTranslator::isSupportTranslation(engine, checkedLang)) {
                 ui->engineComboBox->setCurrentIndex(i); // Check first supported language
                 break;
             }
@@ -1139,5 +1048,5 @@ QOnlineTranslator::Language MainWindow::preferredTranslationLanguage(QOnlineTran
 
 QOnlineTranslator::Engine MainWindow::currentEngine() const
 {
-    return static_cast<QOnlineTranslator::Engine>(ui->engineComboBox->currentIndex());
+    return ui->engineComboBox->currentData().value<QOnlineTranslator::Engine>();
 }

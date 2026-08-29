@@ -69,16 +69,6 @@ public:
     };
     Q_ENUM(IconType)
 
-#ifdef Q_OS_WIN
-    enum Interval {
-        Day,
-        Week,
-        Month,
-        Never
-    };
-    Q_ENUM(Interval)
-#endif
-
     AppSettings(QObject *parent = nullptr);
 
     // General settings
@@ -121,15 +111,6 @@ public:
     bool isPortableModeEnabled() const;
     static void setPortableModeEnabled(bool enabled);
     static QString portableConfigName();
-#endif
-
-#ifdef Q_OS_WIN
-    Interval checkForUpdatesInterval() const;
-    void setCheckForUpdatesInterval(Interval interval);
-    static Interval defaultCheckForUpdatesInterval();
-
-    QDate lastUpdateCheckDate() const;
-    void setLastUpdateCheckDate(const QDate &date);
 #endif
 
     // Interface settings
@@ -209,19 +190,11 @@ public:
     void setEngineUrl(QOnlineTranslator::Engine engine, const QString &url);
     static QString defaultEngineUrl(QOnlineTranslator::Engine engine);
 
-    QByteArray engineApiKey(QOnlineTranslator::Engine engine) const;
-    void setEngineApiKey(QOnlineTranslator::Engine engine, const QByteArray &apiKey);
-    static QByteArray defaultEngineApiKey(QOnlineTranslator::Engine engine);
+    QString mozhiEngine() const;
+    void setMozhiEngine(const QString &engine);
+    static QString defaultMozhiEngine();
 
     // Speech synthesis settings
-    QOnlineTts::Voice voice(QOnlineTranslator::Engine engine) const;
-    void setVoice(QOnlineTranslator::Engine engine, QOnlineTts::Voice voice);
-    static QOnlineTts::Voice defaultVoice(QOnlineTranslator::Engine engine);
-
-    QOnlineTts::Emotion emotion(QOnlineTranslator::Engine engine) const;
-    void setEmotion(QOnlineTranslator::Engine engine, QOnlineTts::Emotion emotion);
-    static QOnlineTts::Emotion defaultEmotion(QOnlineTranslator::Engine engine);
-
     QMap<QOnlineTranslator::Language, QLocale::Country> regions(QOnlineTranslator::Engine engine) const;
     void setRegions(QOnlineTranslator::Engine engine, const QMap<QOnlineTranslator::Language, QLocale::Country> &regions);
     static QMap<QOnlineTranslator::Language, QLocale::Country> defaultRegions(QOnlineTranslator::Engine engine);

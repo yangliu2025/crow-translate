@@ -95,15 +95,6 @@
        </item>
        <item>
         <property name="text">
-         <string notr="true">Yandex</string>
-        </property>
-        <property name="icon">
-         <iconset resource="../data/icons/engines/engines.qrc">
-          <normaloff>:/icons/engines/yandex.svg</normaloff>:/icons/engines/yandex.svg</iconset>
-        </property>
-       </item>
-       <item>
-        <property name="text">
          <string notr="true">Bing</string>
         </property>
         <property name="icon">
@@ -111,22 +102,13 @@
           <normaloff>:/icons/engines/bing.svg</normaloff>:/icons/engines/bing.svg</iconset>
         </property>
        </item>
-	   <item>
+       <item>
         <property name="text">
-         <string notr="true">LibreTranslate</string>
+         <string notr="true">Mozhi</string>
         </property>
         <property name="icon">
          <iconset resource="../data/icons/engines/engines.qrc">
-          <normaloff>:/icons/engines/libretranslate.svg</normaloff>:/icons/engines/libretranslate.svg</iconset>
-        </property>
-       </item>
-	   <item>
-        <property name="text">
-         <string notr="true">Lingva</string>
-        </property>
-        <property name="icon">
-         <iconset resource="../data/icons/engines/engines.qrc">
-          <normaloff>:/icons/engines/lingva.svg</normaloff>:/icons/engines/lingva.svg</iconset>
+          <normaloff>:/icons/engines/mozhi.svg</normaloff>:/icons/engines/mozhi.svg</iconset>
         </property>
        </item>
       </widget>

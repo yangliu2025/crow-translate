@@ -27,11 +27,9 @@
 #include <QPainterPath>
 #include <QScreen>
 #include <QtMath>
-#ifdef Q_OS_LINUX
 #include <QX11Info>
 
 #include <xcb/xproto.h>
-#endif
 
 SnippingArea::SnippingArea(QWidget *parent)
     : QWidget(parent, Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint | Qt::Popup | Qt::WindowStaysOnTopHint)
@@ -772,7 +770,6 @@ void SnippingArea::createPixmapFromScreens()
 
 void SnippingArea::setGeometryToScreenPixmap()
 {
-#ifdef Q_OS_LINUX
     if (QX11Info::isPlatformX11()) {
         /*
          * Even though we want the quick editor window to be placed at (0, 0) in the native
@@ -790,7 +787,6 @@ void SnippingArea::setGeometryToScreenPixmap()
         resize(m_screensRect.width() / devicePixelRatio(), m_screensRect.height() / devicePixelRatio());
         return;
     }
-#endif
     setGeometry(m_screensRect);
 }
 

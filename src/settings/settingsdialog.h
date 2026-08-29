@@ -33,11 +33,6 @@ class ShortcutItem;
 #ifdef WITH_PORTABLE_MODE
 class QCheckBox;
 #endif
-#ifdef Q_OS_WIN
-class QComboBox;
-class QPushButton;
-class QLabel;
-#endif
 
 namespace Ui
 {
@@ -70,15 +65,11 @@ private slots:
     void onOcrLanguagesPathChanged(const QString &path);
     void onTesseractParametersCurrentItemChanged();
 
-    void saveYandexEngineVoice(int voice);
-    void saveYandexEngineEmotion(int emotion);
-    void detectYandexTextLanguage();
-    void speakYandexTestText();
-
     void onGoogleLanguageSelectionChanged(int languageIndex);
     void saveGoogleEngineRegion(int region);
     void detectGoogleTextLanguage();
     void speakGoogleTestText();
+    void testMozhiInstance();
 
     void loadShortcut(ShortcutItem *item);
     void updateAcceptButton();
@@ -86,11 +77,6 @@ private slots:
     void clearCurrentShortcut();
     void resetCurrentShortcut();
     void resetAllShortcuts();
-
-#ifdef Q_OS_WIN
-    void downloadUpdatesInfo();
-    void checkForUpdates();
-#endif
     void restoreDefaults();
 
 private:
@@ -98,27 +84,16 @@ private:
     void activateCompactMode();
     void loadSettings();
 
-    void detectTestTextLanguage(QOnlineTranslator &translator, QOnlineTranslator::Engine engine);
-    void speakTestText(QOnlineTranslator &translator, QOnlineTranslator::Engine engine);
-
     Ui::SettingsDialog *ui;
 
     // Manage platform-dependant autostart
     AbstractAutostartManager *m_autostartManager;
 
     // Test voice
-    QOnlineTranslator *m_yandexTranslator;
     QOnlineTranslator *m_googleTranslator;
 
 #ifdef WITH_PORTABLE_MODE
     QCheckBox *m_portableCheckbox;
-#endif
-
-#ifdef Q_OS_WIN
-    // Check for updates box stuff
-    QComboBox *m_checkForUpdatesComboBox;
-    QPushButton *m_checkForUpdatesButton;
-    QLabel *m_checkForUpdatesStatusLabel;
 #endif
 };
 

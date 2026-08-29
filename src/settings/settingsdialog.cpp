@@ -29,22 +29,24 @@
 #include "ocr/ocr.h"
 #include "shortcutsmodel/shortcutitem.h"
 #include "shortcutsmodel/shortcutsmodel.h"
-#ifdef Q_OS_WIN
-#include "qgittag.h"
-#include "updaterdialog.h"
-#endif
 
 #include <QDate>
 #include <QFileDialog>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMessageBox>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
 #include <QScreen>
 #include <QStandardItemModel>
+#include <QTimer>
+#include <QUrl>
+#include <QUrlQuery>
 
 SettingsDialog::SettingsDialog(MainWindow *parent)
     : QDialog(parent)
     , ui(new Ui::SettingsDialog)
     , m_autostartManager(AbstractAutostartManager::createAutostartManager(this))
-    , m_yandexTranslator(new QOnlineTranslator(this))
     , m_googleTranslator(new QOnlineTranslator(this))
 #ifdef WITH_PORTABLE_MODE
     , m_portableCheckbox(new QCheckBox(tr("Portable mode"), this))
@@ -56,6 +58,7 @@ SettingsDialog::SettingsDialog(MainWindow *parent)
 
     connect(ui->dialogButtonBox->button(QDialogButtonBox::RestoreDefaults), &QPushButton::clicked, this, &SettingsDialog::restoreDefaults);
     connect(ui->globalShortcutsCheckBox, &QCheckBox::toggled, ui->shortcutsTreeView->model(), &ShortcutsModel::setGlobalShortuctsEnabled);
+    connect(ui->testMozhiButton, &QPushButton::clicked, this, &SettingsDialog::testMozhiInstance);
     ui->logoLabel->setPixmap(QIcon::fromTheme(QStringLiteral("crow-translate")).pixmap(512, 512));
     ui->versionLabel->setText(QCoreApplication::applicationVersion());
 
@@ -65,9 +68,6 @@ SettingsDialog::SettingsDialog(MainWindow *parent)
 #endif
 
     // Test voice
-    ui->yandexPlayerButtons->setMediaPlayer(new QMediaPlayer);
-    connect(m_yandexTranslator, &QOnlineTranslator::finished, this, &SettingsDialog::speakYandexTestText);
-
     ui->googlePlayerButtons->setMediaPlayer(new QMediaPlayer);
     connect(m_googleTranslator, &QOnlineTranslator::finished, this, &SettingsDialog::speakGoogleTestText);
 
@@ -133,52 +133,10 @@ SettingsDialog::SettingsDialog(MainWindow *parent)
     connect(ui->windowModeComboBox, qOverload<int>(&QComboBox::currentIndexChanged), ui->popupOpacityLabel, &QSlider::setDisabled);
     connect(ui->windowModeComboBox, qOverload<int>(&QComboBox::currentIndexChanged), ui->popupOpacitySlider, &QSlider::setDisabled);
 
-#ifdef Q_OS_WIN
-    // Add information about icons
-    auto *iconsTitleLabel = new QLabel(this);
-    iconsTitleLabel->setText(tr("Icons:"));
-
-    auto *iconsLabel = new QLabel(this);
-    iconsLabel->setText("<a href=\"https://github.com/vinceliuice/Fluent-icon-theme\">Fluent</a>");
-    iconsLabel->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::LinksAccessibleByMouse);
-    iconsLabel->setOpenExternalLinks(true);
-
-    qobject_cast<QFormLayout *>(ui->aboutGroupBox->layout())->addRow(iconsTitleLabel, iconsLabel);
-
-    // Add updater options
-    auto *updatesGroupBox = new QGroupBox(tr("Updates"));
-    qobject_cast<QVBoxLayout *>(ui->generalPage->layout())->insertWidget(1, updatesGroupBox);
-
-    auto *updatesLayout = new QHBoxLayout;
-    updatesGroupBox->setLayout(updatesLayout);
-
-    auto *checkForUpdatesLabel = new QLabel;
-    checkForUpdatesLabel->setText(tr("Check for updates:"));
-    updatesLayout->addWidget(checkForUpdatesLabel);
-
-    m_checkForUpdatesComboBox = new QComboBox;
-    m_checkForUpdatesComboBox->addItem(tr("Every day"));
-    m_checkForUpdatesComboBox->addItem(tr("Every week"));
-    m_checkForUpdatesComboBox->addItem(tr("Every month"));
-    m_checkForUpdatesComboBox->addItem(tr("Never"));
-    updatesLayout->addWidget(m_checkForUpdatesComboBox);
-
-    m_checkForUpdatesButton = new QPushButton;
-    m_checkForUpdatesButton->setText(tr("Check now"));
-    m_checkForUpdatesButton->setToolTip(tr("Check for updates now"));
-    connect(m_checkForUpdatesButton, &QPushButton::clicked, this, &SettingsDialog::downloadUpdatesInfo);
-    updatesLayout->addWidget(m_checkForUpdatesButton);
-
-    m_checkForUpdatesStatusLabel = new QLabel;
-    updatesLayout->addWidget(m_checkForUpdatesStatusLabel);
-
-    updatesLayout->addStretch();
-#endif
-
     // Check current date
     const QDate date = QDate::currentDate();
     if ((date.month() == 12 && date.day() == 31) || (date.month() == 1 && date.day() == 1))
-        ui->yandexTestSpeechEdit->setText(tr("Happy New Year!"));
+        ui->googleTestSpeechEdit->setText(tr("Happy New Year!"));
 
     loadSettings();
 }
@@ -219,9 +177,6 @@ void SettingsDialog::accept()
     settings.setShowTrayIcon(ui->showTrayIconCheckBox->isChecked());
     settings.setStartMinimized(ui->startMinimizedCheckBox->isChecked());
     m_autostartManager->setAutostartEnabled(ui->autostartCheckBox->isChecked());
-#ifdef Q_OS_WIN
-    settings.setCheckForUpdatesInterval(static_cast<AppSettings::Interval>(m_checkForUpdatesComboBox->currentIndex()));
-#endif
 
     // Interface settings
     QFont font = ui->fontNameComboBox->currentFont();
@@ -251,9 +206,10 @@ void SettingsDialog::accept()
     settings.setForceTranslationAutodetect(ui->forceTranslationAutodetectCheckBox->isChecked());
 
     // Engine settings
-    settings.setEngineUrl(QOnlineTranslator::LibreTranslate, ui->libreTranslateUrlComboBox->currentText());
-    settings.setEngineApiKey(QOnlineTranslator::LibreTranslate, ui->libreTranslateApiKeyTextEdit->text().toUtf8());
-    settings.setEngineUrl(QOnlineTranslator::Lingva, ui->lingvaUrlComboBox->currentText());
+    const QString mozhiUrl = ui->mozhiUrlComboBox->currentText().trimmed();
+    settings.setEngineUrl(QOnlineTranslator::Mozhi, mozhiUrl.isEmpty() ? AppSettings::defaultEngineUrl(QOnlineTranslator::Mozhi) : mozhiUrl);
+    const QString mozhiEngine = ui->mozhiEngineComboBox->currentText().trimmed();
+    settings.setMozhiEngine(mozhiEngine.isEmpty() ? AppSettings::defaultMozhiEngine() : mozhiEngine);
 
     // OCR
     settings.setConvertLineBreaks(ui->convertLineBreaksCheckBox->isChecked());
@@ -267,8 +223,6 @@ void SettingsDialog::accept()
     settings.setTesseractParameters(ui->tesseractParametersTableWidget->parameters());
 
     // Speech synthesis settings
-    settings.setVoice(QOnlineTranslator::Yandex, ui->yandexPlayerButtons->voice(QOnlineTranslator::Yandex));
-    settings.setEmotion(QOnlineTranslator::Yandex, ui->yandexPlayerButtons->emotion(QOnlineTranslator::Yandex));
     settings.setRegions(QOnlineTranslator::Google, ui->googlePlayerButtons->regions(QOnlineTranslator::Google));
 
     // Connection settings
@@ -375,29 +329,6 @@ void SettingsDialog::onTesseractParametersCurrentItemChanged()
         ui->tesseractParametersRemoveButton->setEnabled(true);
 }
 
-// Save current engine voice settings
-void SettingsDialog::saveYandexEngineVoice(int voice)
-{
-    ui->yandexPlayerButtons->setVoice(QOnlineTranslator::Yandex, ui->yandexVoiceComboBox->itemData(voice).value<QOnlineTts::Voice>());
-}
-
-// Save current engine emotion settings
-void SettingsDialog::saveYandexEngineEmotion(int emotion)
-{
-    ui->yandexPlayerButtons->setEmotion(QOnlineTranslator::Yandex, ui->yandexEmotionComboBox->itemData(emotion).value<QOnlineTts::Emotion>());
-}
-
-// To play test text
-void SettingsDialog::detectYandexTextLanguage()
-{
-    detectTestTextLanguage(*m_yandexTranslator, QOnlineTranslator::Yandex);
-}
-
-void SettingsDialog::speakYandexTestText()
-{
-    speakTestText(*m_yandexTranslator, QOnlineTranslator::Yandex);
-}
-
 void SettingsDialog::onGoogleLanguageSelectionChanged(int languageIndex)
 {
     const auto configuredLang = ui->googleLanguageComboBox->itemData(languageIndex).value<QOnlineTranslator::Language>();
@@ -428,12 +359,85 @@ void SettingsDialog::saveGoogleEngineRegion(int region)
 
 void SettingsDialog::detectGoogleTextLanguage()
 {
-    detectTestTextLanguage(*m_googleTranslator, QOnlineTranslator::Google);
+    if (ui->googleTestSpeechEdit->text().isEmpty()) {
+        QMessageBox::information(this, tr("Nothing to play"), tr("Playback text is empty"));
+        return;
+    }
+    m_googleTranslator->detectLanguage(ui->googleTestSpeechEdit->text(), QOnlineTranslator::Google);
 }
 
 void SettingsDialog::speakGoogleTestText()
 {
-    speakTestText(*m_googleTranslator, QOnlineTranslator::Google);
+    if (m_googleTranslator->error() != QOnlineTranslator::NoError) {
+        QMessageBox::critical(this, tr("Unable to detect language"), m_googleTranslator->errorString());
+        return;
+    }
+    ui->googlePlayerButtons->speak(ui->googleTestSpeechEdit->text(), m_googleTranslator->sourceLanguage(), QOnlineTranslator::Google);
+}
+
+void SettingsDialog::testMozhiInstance()
+{
+    QString instance = ui->mozhiUrlComboBox->currentText().trimmed();
+    while (instance.endsWith('/'))
+        instance.chop(1);
+
+    QUrl url(instance + QStringLiteral("/api/translate"));
+    if (!url.isValid() || url.scheme().isEmpty() || url.host().isEmpty()) {
+        ui->mozhiStatusLabel->setStyleSheet(QStringLiteral("color: red"));
+        ui->mozhiStatusLabel->setText(tr("Invalid URL"));
+        return;
+    }
+
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("engine"), ui->mozhiEngineComboBox->currentText());
+    query.addQueryItem(QStringLiteral("from"), QStringLiteral("en"));
+    query.addQueryItem(QStringLiteral("to"), QStringLiteral("de"));
+    query.addQueryItem(QStringLiteral("text"), QStringLiteral("hello"));
+    url.setQuery(query);
+
+    ui->testMozhiButton->setEnabled(false);
+    ui->mozhiStatusLabel->setStyleSheet({});
+    ui->mozhiStatusLabel->setText(tr("Testing..."));
+
+    auto *manager = new QNetworkAccessManager(this);
+    QNetworkRequest request(url);
+    request.setRawHeader("Accept", "application/json");
+    request.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+    QNetworkReply *reply = manager->get(request);
+    QTimer::singleShot(10000, reply, [reply] {
+        if (reply->isRunning()) {
+            reply->setProperty("timedOut", true);
+            reply->abort();
+        }
+    });
+
+    connect(reply, &QNetworkReply::finished, this, [this, manager, reply] {
+        const QByteArray response = reply->readAll();
+        ui->testMozhiButton->setEnabled(true);
+
+        QJsonParseError parseError;
+        const QJsonDocument document = QJsonDocument::fromJson(response, &parseError);
+        if (reply->property("timedOut").toBool()) {
+            ui->mozhiStatusLabel->setStyleSheet(QStringLiteral("color: red"));
+            ui->mozhiStatusLabel->setText(tr("Timed out"));
+        } else if (reply->error() != QNetworkReply::NoError) {
+            ui->mozhiStatusLabel->setStyleSheet(QStringLiteral("color: red"));
+            const QString instanceError = QString::fromUtf8(response).trimmed();
+            ui->mozhiStatusLabel->setText(instanceError.isEmpty() ? reply->errorString() : instanceError);
+        } else if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+            ui->mozhiStatusLabel->setStyleSheet(QStringLiteral("color: red"));
+            ui->mozhiStatusLabel->setText(tr("Invalid response"));
+        } else if (document.object().value(QStringLiteral("translated-text")).toString().isEmpty()) {
+            ui->mozhiStatusLabel->setStyleSheet(QStringLiteral("color: red"));
+            ui->mozhiStatusLabel->setText(tr("Translation failed"));
+        } else {
+            ui->mozhiStatusLabel->setStyleSheet(QStringLiteral("color: green"));
+            ui->mozhiStatusLabel->setText(tr("Available"));
+        }
+
+        reply->deleteLater();
+        manager->deleteLater();
+    });
 }
 
 void SettingsDialog::loadShortcut(ShortcutItem *item)
@@ -479,46 +483,6 @@ void SettingsDialog::resetAllShortcuts()
     ui->shortcutsTreeView->model()->resetAllShortcuts();
 }
 
-#ifdef Q_OS_WIN
-void SettingsDialog::downloadUpdatesInfo()
-{
-    m_checkForUpdatesButton->setEnabled(false);
-    m_checkForUpdatesStatusLabel->setText(tr("Checking for updates..."));
-
-    // Get update information
-    auto *release = new QGitTag(this);
-    connect(release, &QGitTag::finished, this, &SettingsDialog::checkForUpdates);
-    release->get("crow-translate", "crow-translate");
-}
-
-void SettingsDialog::checkForUpdates()
-{
-    auto *release = qobject_cast<QGitTag *>(sender());
-    release->deleteLater();
-    m_checkForUpdatesButton->setEnabled(true);
-
-    if (release->error()) {
-        m_checkForUpdatesStatusLabel->setStyleSheet("color: red");
-        m_checkForUpdatesStatusLabel->setText(release->errorString());
-        return;
-    }
-
-    if (const int installer = release->assetId(".exe"); QCoreApplication::applicationVersion() < release->tagName() && installer != -1) {
-        m_checkForUpdatesStatusLabel->setStyleSheet("color: green");
-        m_checkForUpdatesStatusLabel->setText(tr("Update available!"));
-        auto *updaterDialog = new UpdaterDialog(release, installer, this);
-        updaterDialog->setAttribute(Qt::WA_DeleteOnClose);
-        updaterDialog->open();
-    } else {
-        m_checkForUpdatesStatusLabel->setStyleSheet("");
-        m_checkForUpdatesStatusLabel->setText(tr("No updates available."));
-    }
-
-    AppSettings settings;
-    settings.setLastUpdateCheckDate(QDate::currentDate());
-}
-#endif
-
 void SettingsDialog::restoreDefaults()
 {
     // General settings
@@ -530,9 +494,6 @@ void SettingsDialog::restoreDefaults()
     ui->showTrayIconCheckBox->setChecked(AppSettings::defaultShowTrayIcon());
     ui->startMinimizedCheckBox->setChecked(AppSettings::defaultStartMinimized());
     ui->autostartCheckBox->setChecked(AppSettings::defaultAutostartEnabled());
-#ifdef Q_OS_WIN
-    m_checkForUpdatesComboBox->setCurrentIndex(AppSettings::defaultCheckForUpdatesInterval());
-#endif
 
     // Interface settings
     const QFont defaultFont = QApplication::font();
@@ -562,9 +523,9 @@ void SettingsDialog::restoreDefaults()
     ui->forceTranslationAutodetectCheckBox->setChecked(AppSettings::defaultForceTranslationAutodetect());
 
     // Engine settings
-    ui->libreTranslateUrlComboBox->setCurrentText(AppSettings::defaultEngineUrl(QOnlineTranslator::LibreTranslate));
-    ui->libreTranslateApiKeyTextEdit->setText(AppSettings::defaultEngineApiKey(QOnlineTranslator::LibreTranslate));
-    ui->lingvaUrlComboBox->setCurrentText(AppSettings::defaultEngineUrl(QOnlineTranslator::Lingva));
+    ui->mozhiUrlComboBox->setCurrentText(AppSettings::defaultEngineUrl(QOnlineTranslator::Mozhi));
+    ui->mozhiEngineComboBox->setCurrentText(AppSettings::defaultMozhiEngine());
+    ui->mozhiStatusLabel->clear();
 
     // OCR
     ui->convertLineBreaksCheckBox->setChecked(AppSettings::defaultConvertLineBreaks());
@@ -578,8 +539,6 @@ void SettingsDialog::restoreDefaults()
     ui->tesseractParametersTableWidget->setParameters(AppSettings::defaultTesseractParameters());
 
     // Speech synthesis settings
-    ui->yandexPlayerButtons->setVoice(QOnlineTranslator::Yandex, AppSettings::defaultVoice(QOnlineTranslator::Yandex));
-    ui->yandexPlayerButtons->setEmotion(QOnlineTranslator::Yandex, AppSettings::defaultEmotion(QOnlineTranslator::Yandex));
     ui->googlePlayerButtons->setRegions(QOnlineTranslator::Google, AppSettings::defaultRegions(QOnlineTranslator::Google));
 
     // Connection settings
@@ -641,9 +600,6 @@ void SettingsDialog::loadSettings()
 #ifdef WITH_PORTABLE_MODE
     m_portableCheckbox->setChecked(settings.isPortableModeEnabled());
 #endif
-#ifdef Q_OS_WIN
-    m_checkForUpdatesComboBox->setCurrentIndex(settings.checkForUpdatesInterval());
-#endif
 
     // Interface settings
     const QFont font = settings.font();
@@ -673,9 +629,8 @@ void SettingsDialog::loadSettings()
     ui->forceTranslationAutodetectCheckBox->setChecked(settings.isForceTranslationAutodetect());
 
     // Engines settings
-    ui->libreTranslateUrlComboBox->setCurrentText(settings.engineUrl(QOnlineTranslator::LibreTranslate));
-    ui->libreTranslateApiKeyTextEdit->setText(settings.engineApiKey(QOnlineTranslator::LibreTranslate));
-    ui->lingvaUrlComboBox->setCurrentText(settings.engineUrl(QOnlineTranslator::Lingva));
+    ui->mozhiUrlComboBox->setCurrentText(settings.engineUrl(QOnlineTranslator::Mozhi));
+    ui->mozhiEngineComboBox->setCurrentText(settings.mozhiEngine());
 
     // OCR
     ui->convertLineBreaksCheckBox->setChecked(settings.isConvertLineBreaks());
@@ -689,8 +644,6 @@ void SettingsDialog::loadSettings()
     ui->tesseractParametersTableWidget->setParameters(settings.tesseractParameters());
 
     // Speech synthesis settings
-    ui->yandexPlayerButtons->setVoice(QOnlineTranslator::Yandex, settings.voice(QOnlineTranslator::Yandex));
-    ui->yandexPlayerButtons->setEmotion(QOnlineTranslator::Yandex, settings.emotion(QOnlineTranslator::Yandex));
     ui->googlePlayerButtons->setRegions(QOnlineTranslator::Google, settings.regions(QOnlineTranslator::Google));
 
     // Connection settings
@@ -709,31 +662,4 @@ void SettingsDialog::loadSettings()
         ui->globalShortcutsCheckBox->setEnabled(false);
     }
     ui->shortcutsTreeView->model()->loadShortcuts(settings);
-}
-
-void SettingsDialog::detectTestTextLanguage(QOnlineTranslator &translator, QOnlineTranslator::Engine engine)
-{
-    const QString &testText = ((engine == QOnlineTranslator::Yandex) ? ui->yandexTestSpeechEdit->text() : ui->googleTestSpeechEdit->text()); // There are now only two engines
-
-    if (testText.isEmpty()) {
-        QMessageBox::information(this, tr("Nothing to play"), tr("Playback text is empty"));
-        return;
-    }
-
-    translator.detectLanguage(testText, engine);
-}
-
-void SettingsDialog::speakTestText(QOnlineTranslator &translator, QOnlineTranslator::Engine engine)
-{
-    if (translator.error() != QOnlineTranslator::NoError) {
-        QMessageBox::critical(this, tr("Unable to detect language"), translator.errorString());
-        return;
-    }
-
-    if (engine == QOnlineTranslator::Yandex)
-        ui->yandexPlayerButtons->speak(ui->yandexTestSpeechEdit->text(), translator.sourceLanguage(), QOnlineTranslator::Yandex);
-    else if (engine == QOnlineTranslator::Google)
-        ui->googlePlayerButtons->speak(ui->googleTestSpeechEdit->text(), translator.sourceLanguage(), QOnlineTranslator::Google);
-    else
-        Q_UNREACHABLE();
 }

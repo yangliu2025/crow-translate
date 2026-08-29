@@ -6,8 +6,7 @@
 [![GitHub (pre-)release](https://img.shields.io/github/release/crow-translate/crow-translate/all.svg)](https://github.com/crow-translate/crow-translate/releases)
 [![Crowdin](https://badges.crowdin.net/crow-translate/localized.svg)](https://crowdin.com/project/crow-translate)
 
-**Crow Translate** is a simple and lightweight translator written in **C++ / Qt** that allows you to translate and speak text using Google, Yandex, Bing, LibreTranslate and Lingva translate API.
-You may also be interested in my library [QOnlineTranslator](https://github.com/crow-translate/QOnlineTranslator "A library for Qt5 that provides free usage of Google, Yandex, Bing, LibreTranslate and Lingva translate API.") used in this project.
+**Crow Translate** is a simple and lightweight translator written in **C++ / Qt**. It supports direct Google and Bing translation, plus community translation engines through Mozhi. Bing speech uses Edge TTS.
 
 ## Content
 
@@ -37,12 +36,6 @@ You may also be interested in my library [QOnlineTranslator](https://github.com/
   <img src="https://raw.githubusercontent.com/crow-translate/crow-translate.github.io/master/static/screenshots/plasma-mobile/main-landscape.png"alt="Main"/>
 </p>
 
-**Windows 10**
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/crow-translate/crow-translate.github.io/master/static/screenshots/windows/main.png" alt="Main"/>
-</p>
-
 ## Features
 
 - Translate and speak text from screen or selection
@@ -51,7 +44,7 @@ You may also be interested in my library [QOnlineTranslator](https://github.com/
 - Highly customizable shortcuts
 - Command-line interface with rich options
 - D-Bus API
-- Available for Linux and Windows
+- Built for Linux desktops
 
 ## Default keyboard shortcuts
 
@@ -96,7 +89,7 @@ The program also has a console interface.
 | `-s, --source <code>`      | Specify the source language (by default, engine will try to determine the language on its own)                      |
 | `-t, --translation <code>` | Specify the translation language(s), splitted by '+' (by default, the system language is used)                      |
 | `-l, --locale <code>`      | Specify the translator language (by default, the system language is used)                                           |
-| `-e, --engine <engine>`    | Specify the translator engine ('google', 'yandex', 'bing', 'libretranslate' or 'lingva'), Google is used by default |
+| `-e, --engine <engine>`    | Specify the translator engine ('google', 'bing' or 'mozhi'), Google is used by default |
 | `-p, --speak-translation`  | Speak the translation                                                                                               |
 | `-u, --speak-source`       | Speak the source                                                                                                    |
 | `-f, --file`               | Read source text from files. Arguments will be interpreted as file paths                                            |
@@ -174,27 +167,24 @@ You can set a hotkey for this command in GNOME system settings.
 
 - [CMake](https://cmake.org) 3.16+
 - [Extra CMake Modules](https://github.com/KDE/extra-cmake-modules)
-- [Qt](https://www.qt.io) 5.9+ with Widgets, Network, Multimedia, Concurrent, X11Extras (Linux), DBus (Linux) and WinExtras (Windows) modules
+- [Qt](https://www.qt.io) 5.9+ with Widgets, Network, Multimedia, WebSockets, Concurrent, X11Extras and DBus modules
 - [Tesseract](https://tesseract-ocr.github.io) 4.0+
-- [Png2Ico](https://www.winterdrache.de/freeware/png2ico) or [IcoTool](https://www.nongnu.org/icoutils) for generating executable icon (Windows)
 
 ### Optional
 
 - [KWayland](https://invent.kde.org/frameworks/kwayland)
 
-### External libraries
+### Bundled libraries
 
-This project uses the following external libraries, which included as git submodules:
+The following libraries are included directly in this repository:
 
-- [QOnlineTranslator](https://github.com/crow-translate/QOnlineTranslator) - provides free usage of Google, Yandex and Bing translate API.
-- [QGitTag](https://github.com/crow-translate/QGitTag) - uses the GitHub API to provide information about releases.
-- [QHotkey](https://github.com/Skycoder42/QHotkey) - provides global shortcuts for desktop platforms.
-- [QTaskbarControl](https://github.com/Skycoder42/QTaskbarControl) - to create a taskbar/launcher progress for all desktop platforms.
+- QOnlineTranslator - provides Google, Bing and Mozhi translation support.
+- [QHotkey](https://github.com/Skycoder42/QHotkey) - provides global shortcuts on X11.
 - [SingleApplication](https://github.com/itay-grudev/SingleApplication) - prevents launch of multiple application instances.
 
 ## Icons
 
-[Fluent](https://github.com/vinceliuice/Fluent-icon-theme) icon theme is bundled to provide icons on Windows and fallback icons on Linux.
+[Fluent](https://github.com/vinceliuice/Fluent-icon-theme) icon theme is bundled as a fallback icon set.
 
 [circle-flags](https://github.com/HatScripts/circle-flags "A collection of 300+ minimal circular SVG country flags") icons are used for flags.
 
@@ -204,8 +194,6 @@ Downloads are available on the [Releases](https://github.com/crow-translate/crow
 
 **Note:** On Linux to make the application look native on a non-KDE desktop environment, you need to configure Qt applications styling. This can be done by using [qt5ct](https://github.com/RomanVolak/qt5ct) or [adwaita-qt5](https://github.com/FedoraQt/adwaita-qt) or [qtstyleplugins](https://github.com/qt/qtstyleplugins). Please check the appropriate installation guide for your distribution.
 
-**Note:** Windows requires [Microsoft Visual C++ Redistributable 2019](https://support.microsoft.com/en-us/topic/the-latest-supported-visual-c-downloads-2647da03-1eea-4433-9aff-95f26a218cc0) to work.
-
 ## Building
 
 ### Building executable
@@ -213,10 +201,8 @@ Downloads are available on the [Releases](https://github.com/crow-translate/crow
 You can build **Crow Translate** by using the following commands:
 
 ```bash
-mkdir build
-cd build
-cmake .. # Or `cmake -D CMAKE_BUILD_TYPE=Release ..` for single-configuration generators such as Ninja or GNU Make
-cmake --build . # Or `cmake --build . --config Release` for multi-config generators such as Visual Studio Generators or Xcode
+cmake -S . -B build -G Ninja -D CMAKE_BUILD_TYPE=Release
+cmake --build build
 ```
 
 You will then get a binary named `crow`.
@@ -225,25 +211,18 @@ You will then get a binary named `crow`.
 
 CMake can create [specified package types](https://cmake.org/cmake/help/latest/manual/cpack-generators.7.html) automatically.
 
-If you use Makefile, Ninja, or Xcode generator you can use [package](https://cmake.org/cmake/help/latest/module/CPack.html#targets-package-and-package-source) target:
+Use the [package](https://cmake.org/cmake/help/latest/module/CPack.html#targets-package-and-package-source) target to build a DEB package:
 
 ```bash
-mkdir build
-cd build
-cmake -D CMAKE_BUILD_TYPE=Release -D CPACK_GENERATOR=DEB .. # You can specify several types of packages separated by semicolons in double quotes, for example: `CPACK_GENERATOR="DEB;ZIP;NSIS"`
-cmake --build . --target package
+./build_deb.sh
 ```
 
-Or you can use [CPack](https://cmake.org/cmake/help/latest/module/CPack.html) utility for any generators:
+The build directory can be overridden with `BUILD_DIR`, and additional CMake options can be passed as arguments. The equivalent manual commands are:
 
 ```bash
-mkdir build
-cd build
-cmake .. # Or `cmake -D CMAKE_BUILD_TYPE=Release ..` for single-configuration generators such as Ninja or GNU Make
-cpack -G DEB # Or `cpack -G DEB -C Release` for multi-config generators such as Visual Studio Generators or Xcode
+cmake -S . -B build -G Ninja -D CMAKE_BUILD_TYPE=Release -D CPACK_GENERATOR=DEB
+cmake --build build --target package
 ```
-
-On Windows you need [VCPKG](https://github.com/microsoft/vcpkg) to bundle all necessary DLLs.
 
 ### Build parameters
 

@@ -20,21 +20,27 @@
 #include "speakbuttons.h"
 #include "ui_speakbuttons.h"
 
+#include "edgetts.h"
 #include "settings/appsettings.h"
 
+#include <QDir>
 #include <QMediaPlaylist>
 #include <QMessageBox>
+#include <QTemporaryFile>
 
 QMediaPlayer *SpeakButtons::s_currentlyPlaying = nullptr;
 
 SpeakButtons::SpeakButtons(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::SpeakButtons)
+    , m_edgeTts(new EdgeTts(this))
 {
     ui->setupUi(this);
 
     connect(ui->playPauseButton, &QAbstractButton::clicked, this, &SpeakButtons::onPlayPauseButtonPressed);
     connect(ui->stopButton, &QAbstractButton::clicked, this, &SpeakButtons::stopSpeaking);
+    connect(m_edgeTts, &EdgeTts::audioReady, this, &SpeakButtons::playEdgeAudio);
+    connect(m_edgeTts, &EdgeTts::error, this, &SpeakButtons::showEdgeTtsError);
 }
 
 SpeakButtons::~SpeakButtons()
@@ -81,48 +87,6 @@ QKeySequence SpeakButtons::speakShortcut() const
     return ui->playPauseButton->shortcut();
 }
 
-QOnlineTts::Voice SpeakButtons::voice(QOnlineTranslator::Engine engine) const
-{
-    switch (engine) {
-    case QOnlineTranslator::Yandex:
-        return m_yandexVoice;
-    default:
-        return QOnlineTts::NoVoice;
-    }
-}
-
-void SpeakButtons::setVoice(QOnlineTranslator::Engine engine, QOnlineTts::Voice voice)
-{
-    switch (engine) {
-    case QOnlineTranslator::Yandex:
-        m_yandexVoice = voice;
-        break;
-    default:
-        break;
-    }
-}
-
-QOnlineTts::Emotion SpeakButtons::emotion(QOnlineTranslator::Engine engine) const
-{
-    switch (engine) {
-    case QOnlineTranslator::Yandex:
-        return m_yandexEmotion;
-    default:
-        return QOnlineTts::NoEmotion;
-    }
-}
-
-void SpeakButtons::setEmotion(QOnlineTranslator::Engine engine, QOnlineTts::Emotion emotion)
-{
-    switch (engine) {
-    case QOnlineTranslator::Yandex:
-        m_yandexEmotion = emotion;
-        break;
-    default:
-        break;
-    }
-}
-
 QMap<QOnlineTranslator::Language, QLocale::Country> SpeakButtons::regions(QOnlineTranslator::Engine engine) const
 {
     switch (engine) {
@@ -151,10 +115,16 @@ void SpeakButtons::speak(const QString &text, QOnlineTranslator::Language lang, 
         return;
     }
 
+    if (engine == QOnlineTranslator::Bing || engine == QOnlineTranslator::Mozhi) {
+        playlist()->clear();
+        m_edgeTts->synthesize(text, lang);
+        return;
+    }
+
     QOnlineTts onlineTts;
     onlineTts.setRegions(m_googleRegions);
 
-    onlineTts.generateUrls(text, engine, lang, voice(engine), emotion(engine));
+    onlineTts.generateUrls(text, engine, lang);
     if (onlineTts.error() != QOnlineTts::NoError) {
         QMessageBox::critical(this, tr("Unable to generate URLs for TTS"), onlineTts.errorString());
         return;
@@ -182,6 +152,7 @@ void SpeakButtons::playPauseSpeaking()
 
 void SpeakButtons::stopSpeaking()
 {
+    m_edgeTts->abort();
     m_mediaPlayer->stop();
 }
 
@@ -226,4 +197,24 @@ void SpeakButtons::onPlayerPositionChanged(qint64 position)
         emit positionChanged(static_cast<double>(position) / static_cast<double>(m_mediaPlayer->duration()));
     else
         emit positionChanged(0);
+}
+
+void SpeakButtons::playEdgeAudio(const QByteArray &audio)
+{
+    playlist()->clear();
+    delete m_edgeAudioFile;
+    m_edgeAudioFile = new QTemporaryFile(QDir::tempPath() + QStringLiteral("/crow-edge-tts-XXXXXX.mp3"), this);
+    if (!m_edgeAudioFile->open() || m_edgeAudioFile->write(audio) != audio.size()) {
+        showEdgeTtsError(tr("Unable to create a temporary audio file"));
+        return;
+    }
+    m_edgeAudioFile->close();
+
+    playlist()->addMedia(QUrl::fromLocalFile(m_edgeAudioFile->fileName()));
+    m_mediaPlayer->play();
+}
+
+void SpeakButtons::showEdgeTtsError(const QString &message)
+{
+    QMessageBox::critical(this, tr("Unable to generate audio"), message);
 }

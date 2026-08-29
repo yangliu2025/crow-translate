@@ -4,6 +4,9 @@
 
   <name>Crow Translate</name>
   <summary>A simple and lightweight translator</summary>
+  <developer id="io.crow_translate">
+    <name>Hennadii Chernyshchyk and contributors</name>
+  </developer>
 
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
@@ -11,8 +14,8 @@
   <description>
     <p>
       Crow Translate is a simple and lightweight translator written in C++ / Qt
-      that allows you to translate and speak text using Google, Yandex, Bing,
-      LibreTranslate and Lingva translate API.
+      with direct Google and Bing translation, community engines through Mozhi,
+      and Edge text-to-speech for Bing.
     </p>
     <p>Features:</p>
     <ul>
@@ -22,11 +25,11 @@
       <li>Highly customizable shortcuts</li>
       <li>Command-line interface with rich options</li>
       <li>D-Bus API</li>
-      <li>Available for Linux and Windows</li>
+      <li>Built for Linux desktops</li>
     </ul>
   </description>
 
-  <url type="homepage">https://crow-translate.github.io</url>
+  <url type="homepage">https://invent.kde.org/office/crow-translate</url>
   <url type="bugtracker">https://github.com/crow-translate/crow-translate/issues</url>
   <url type="translate">https://crowdin.com/project/crow-translate</url>
 
@@ -43,6 +46,18 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="2.12.0" date="2026-08-28">
+      <description>
+        <p>Changelog:</p>
+        <ul>
+          <li>Add configurable Mozhi instances and translation engines.</li>
+          <li>Add Edge text-to-speech for Bing.</li>
+          <li>Fix Bing successful responses being treated as errors.</li>
+          <li>Focus the application and build system on Linux.</li>
+          <li>Vendor runtime libraries and icon assets in one repository.</li>
+        </ul>
+      </description>
+    </release>
     <release version="2.11.1" date="2024-01-04">
       <description>
         <p>Changelog:</p>
