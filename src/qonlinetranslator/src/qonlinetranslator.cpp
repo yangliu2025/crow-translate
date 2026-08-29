@@ -992,15 +992,27 @@ void QOnlineTranslator::parseGoogleTranslate()
     if (m_source.size() >= s_googleTranslateLimit)
         return;
 
+    parseGoogleDetailData(jsonData);
+}
+
+void QOnlineTranslator::parseGoogleDetailData(const QJsonArray &jsonData)
+{
+    if (jsonData.size() <= 1)
+        return;
+
     // Translation options
-    if (m_translationOptionsEnabled) {
-        for (const QJsonValueRef typeOfSpeechData : jsonData.at(1).toArray()) {
+    if (m_translationOptionsEnabled && jsonData.size() > 1) {
+        for (const QJsonValue typeOfSpeechData : jsonData.at(1).toArray()) {
             const QJsonArray typeOfSpeechDataArray = typeOfSpeechData.toArray();
+            if (typeOfSpeechDataArray.size() <= 2)
+                continue;
             const QString typeOfSpeech = typeOfSpeechDataArray.at(0).toString();
-            for (const QJsonValueRef wordData : typeOfSpeechDataArray.at(2).toArray()) {
+            for (const QJsonValue wordData : typeOfSpeechDataArray.at(2).toArray()) {
                 const QJsonArray wordDataArray = wordData.toArray();
+                if (wordDataArray.size() <= 1)
+                    continue;
                 const QString word = wordDataArray.at(0).toString();
-                const QString gender = wordDataArray.at(4).toString();
+                const QString gender = wordDataArray.size() > 4 ? wordDataArray.at(4).toString() : QString();
                 const QJsonArray translationsArray = wordDataArray.at(1).toArray();
                 QStringList translations;
                 translations.reserve(translationsArray.size());
@@ -1012,20 +1024,72 @@ void QOnlineTranslator::parseGoogleTranslate()
     }
 
     // Examples
-    if (m_examplesEnabled) {
-        for (const QJsonValueRef examplesData : jsonData.at(12).toArray()) {
+    if (m_examplesEnabled && jsonData.size() > 12) {
+        for (const QJsonValue examplesData : jsonData.at(12).toArray()) {
             const QJsonArray examplesDataArray = examplesData.toArray();
+            if (examplesDataArray.size() <= 1)
+                continue;
             const QString typeOfSpeech = examplesDataArray.at(0).toString();
 
-            for (const QJsonValueRef exampleData : examplesDataArray.at(1).toArray()) {
+            for (const QJsonValue exampleData : examplesDataArray.at(1).toArray()) {
                 const QJsonArray exampleArray = exampleData.toArray();
-                const QString example = exampleArray.at(2).toString();
+                if (exampleArray.isEmpty())
+                    continue;
+                const QString example = exampleArray.size() > 2 ? exampleArray.at(2).toString() : QString();
                 const QString definition = exampleArray.at(0).toString();
 
                 m_examples[typeOfSpeech].append({example, definition});
             }
         }
     }
+}
+
+void QOnlineTranslator::requestGoogleDetails()
+{
+    const bool needsOptions = m_translationOptionsEnabled && m_translationOptions.isEmpty();
+    const bool needsExamples = m_examplesEnabled && m_examples.isEmpty();
+    if (isContainsSpace(m_source) || (!needsOptions && !needsExamples)) {
+        auto *state = qobject_cast<QState *>(sender());
+        state->addTransition(new QFinalState(state->parentState()));
+        return;
+    }
+
+    const QString sourceText = sender()->property(s_textProperty).toString();
+    QUrl url(QStringLiteral("https://translate.googleapis.com/translate_a/single"));
+    url.setQuery(QStringLiteral("client=gtx&ie=UTF-8&oe=UTF-8&dt=bd&dt=ex&dt=ld&dt=md&dt=rw&dt=rm&dt=ss&dt=t&dt=at&dt=qc&sl=%1&tl=%2&hl=%3&q=%4")
+                     .arg(languageApiCode(Google, m_sourceLang), languageApiCode(Google, m_translationLang), languageApiCode(Google, m_uiLang), QUrl::toPercentEncoding(sourceText)));
+    m_currentReply = m_networkManager->get(QNetworkRequest(url));
+}
+
+void QOnlineTranslator::parseGoogleDetails()
+{
+    const QByteArray response = m_currentReply->readAll();
+    const auto networkError = m_currentReply->error();
+    m_currentReply->deleteLater();
+
+    // Dictionary enrichment is optional and must not discard a successful Mozhi translation.
+    if (networkError != QNetworkReply::NoError || response.startsWith('<'))
+        return;
+
+    QJsonParseError parseError;
+    const QJsonDocument jsonResponse = QJsonDocument::fromJson(response, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !jsonResponse.isArray())
+        return;
+
+    const QJsonArray jsonData = jsonResponse.array();
+    if (jsonData.isEmpty())
+        return;
+    for (const QJsonValue translationData : jsonData.at(0).toArray()) {
+        const QJsonArray translationArray = translationData.toArray();
+        const QString targetTranslit = translationArray.size() > 2 ? translationArray.at(2).toString() : QString();
+        const QString sourceTranslit = translationArray.size() > 3 ? translationArray.at(3).toString() : QString();
+        if (m_translationTranslitEnabled && !targetTranslit.isEmpty())
+            m_translationTranslit = targetTranslit;
+        if (m_sourceTranslitEnabled && !sourceTranslit.isEmpty())
+            m_sourceTranslit = sourceTranslit;
+    }
+
+    parseGoogleDetailData(jsonData);
 }
 
 void QOnlineTranslator::requestBingCredentials()
@@ -1423,10 +1487,13 @@ void QOnlineTranslator::buildBingDetectStateMachine()
 void QOnlineTranslator::buildMozhiStateMachine()
 {
     auto *translationState = new QState(m_stateMachine);
+    auto *detailsState = new QState(m_stateMachine);
     auto *finalState = new QFinalState(m_stateMachine);
     m_stateMachine->setInitialState(translationState);
-    translationState->addTransition(translationState, &QState::finished, finalState);
+    translationState->addTransition(translationState, &QState::finished, detailsState);
+    detailsState->addTransition(detailsState, &QState::finished, finalState);
     buildSplitNetworkRequest(translationState, &QOnlineTranslator::requestMozhiTranslate, &QOnlineTranslator::parseMozhiTranslate, m_source, s_mozhiTranslateLimit);
+    buildNetworkRequestState(detailsState, &QOnlineTranslator::requestGoogleDetails, &QOnlineTranslator::parseGoogleDetails, m_source);
 }
 
 void QOnlineTranslator::buildMozhiDetectStateMachine()

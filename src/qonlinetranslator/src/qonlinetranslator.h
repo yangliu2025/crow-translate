@@ -30,6 +30,7 @@
 
 class QStateMachine;
 class QState;
+class QJsonArray;
 class QNetworkAccessManager;
 class QNetworkReply;
 
@@ -506,6 +507,8 @@ private slots:
     // Mozhi
     void requestMozhiTranslate();
     void parseMozhiTranslate();
+    void requestGoogleDetails();
+    void parseGoogleDetails();
 
 private:
     /*
@@ -534,6 +537,7 @@ private:
     static QString languageApiCode(Engine engine, Language lang);
     static Language language(Engine engine, const QString &langCode);
     QString mozhiLanguageApiCode(Language lang) const;
+    void parseGoogleDetailData(const QJsonArray &jsonData);
     static int getSplitIndex(const QString &untranslatedText, int limit);
     static bool isContainsSpace(const QString &text);
     static void addSpaceBetweenParts(QString &text);
