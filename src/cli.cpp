@@ -236,8 +236,10 @@ void Cli::printTranslation()
                 m_stdout << '\t';
                 if (!gender.isEmpty())
                     m_stdout << gender << ' ';
-                m_stdout << word << ": ";
-                m_stdout << translations.join(QStringLiteral(", ")) << '\n';
+                m_stdout << word;
+                if (!translations.isEmpty())
+                    m_stdout << ": " << translations.join(QStringLiteral(", "));
+                m_stdout << '\n';
             }
             m_stdout << '\n';
         }

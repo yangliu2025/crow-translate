@@ -515,7 +515,7 @@ void AppSettings::setMozhiEngine(const QString &engine)
 
 QString AppSettings::defaultMozhiEngine()
 {
-    return QStringLiteral("google");
+    return QStringLiteral("yandex");
 }
 
 QMap<QOnlineTranslator::Language, QLocale::Country> AppSettings::regions(QOnlineTranslator::Engine engine) const

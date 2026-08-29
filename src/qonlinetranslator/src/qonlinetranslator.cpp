@@ -1164,8 +1164,7 @@ void QOnlineTranslator::parseBingTranslate()
 
 void QOnlineTranslator::requestBingDictionary()
 {
-    // Check if language is supported (need to check here because language may be autodetected)
-    if (!isSupportDictionary(Bing, m_sourceLang, m_translationLang) && !m_source.contains(' ')) {
+    if (!isSupportDictionary(Bing, m_sourceLang, m_translationLang) || m_source.contains(' ')) {
         auto *state = qobject_cast<QState *>(sender());
         state->addTransition(new QFinalState(state->parentState()));
         return;
@@ -1174,26 +1173,36 @@ void QOnlineTranslator::requestBingDictionary()
     // Generate POST data
     const QByteArray postData = "&text=" + QUrl::toPercentEncoding(sender()->property(s_textProperty).toString())
         + "&from=" + languageApiCode(Bing, m_sourceLang).toUtf8()
-        + "&to=" + languageApiCode(Bing, m_translationLang).toUtf8();
+        + "&to=" + languageApiCode(Bing, m_translationLang).toUtf8()
+        + "&token=" + s_bingToken
+        + "&key=" + s_bingKey;
+
+    QUrl url(QStringLiteral("https://www.bing.com/tlookupv3"));
+    url.setQuery(QStringLiteral("IG=%1&IID=%2.2").arg(s_bingIg, s_bingIid));
 
     QNetworkRequest request;
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
-    request.setUrl(QStringLiteral("https://www.bing.com/tlookupv3"));
+    request.setHeader(QNetworkRequest::UserAgentHeader, QCoreApplication::applicationName() + '/' + QCoreApplication::applicationVersion());
+    request.setUrl(url);
 
     m_currentReply = m_networkManager->post(request, postData);
 }
 
 void QOnlineTranslator::parseBingDictionary()
 {
+    const QByteArray response = m_currentReply->readAll();
+    const auto networkError = m_currentReply->error();
     m_currentReply->deleteLater();
 
-    // Check for errors
-    if (m_currentReply->error() != QNetworkReply::NoError) {
-        resetData(NetworkError, m_currentReply->errorString());
+    // Dictionary data is optional; keep the successful translation if this request fails.
+    if (networkError != QNetworkReply::NoError)
         return;
-    }
 
-    const QJsonDocument jsonResponse = QJsonDocument::fromJson(m_currentReply->readAll());
+    QJsonParseError parseError;
+    const QJsonDocument jsonResponse = QJsonDocument::fromJson(response, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !jsonResponse.isArray() || jsonResponse.array().isEmpty())
+        return;
+
     const QJsonObject responseObject = jsonResponse.array().first().toObject();
 
     for (const QJsonValueRef dictionaryData : responseObject.value(QStringLiteral("translations")).toArray()) {
@@ -1267,18 +1276,69 @@ void QOnlineTranslator::parseMozhiTranslate()
     addSpaceBetweenParts(m_translation);
     m_translation.append(translatedText);
 
-    if (m_sourceTranslitEnabled)
-        m_sourceTranslit.append(jsonData.value(QStringLiteral("source_transliteration")).toString());
-    if (m_translationTranslitEnabled)
-        m_translationTranslit.append(jsonData.value(QStringLiteral("target_transliteration")).toString());
+    const QString sourceTranslit = jsonData.value(QStringLiteral("source_transliteration")).toString();
+    const QString targetTranslit = jsonData.value(QStringLiteral("target_transliteration")).toString();
+    if (m_sourceTranslitEnabled && !sourceTranslit.contains(QStringLiteral("not supported"), Qt::CaseInsensitive))
+        m_sourceTranslit.append(sourceTranslit);
+    if (m_translationTranslitEnabled && !targetTranslit.contains(QStringLiteral("not supported"), Qt::CaseInsensitive))
+        m_translationTranslit.append(targetTranslit);
 
     if (m_translationOptionsEnabled) {
-        const QJsonObject options = jsonData.value(QStringLiteral("target_equivalent_source_lang")).toObject();
-        for (auto it = options.constBegin(); it != options.constEnd(); ++it) {
+        const auto appendObject = [this](const QString &section, const QJsonObject &options) {
+            for (auto it = options.constBegin(); it != options.constEnd(); ++it) {
+                QStringList translations;
+                for (const QJsonValue &value : it.value().toArray()) {
+                    if (const QString translation = value.toString(); !translation.isEmpty())
+                        translations.append(translation);
+                }
+                if (!it.key().isEmpty() && !translations.isEmpty())
+                    m_translationOptions[section].append({it.key(), QString(), translations});
+            }
+        };
+        const auto appendArray = [this](const QString &section, const QString &word, const QJsonArray &values) {
             QStringList translations;
-            for (const QJsonValue &value : it.value().toArray())
-                translations.append(value.toString());
-            m_translationOptions[QString()].append({it.key(), QString(), translations});
+            for (const QJsonValue &value : values) {
+                if (const QString translation = value.toString(); !translation.isEmpty())
+                    translations.append(translation);
+            }
+            if (!word.isEmpty() && !translations.isEmpty())
+                m_translationOptions[section].append({word, QString(), translations});
+        };
+
+        appendObject(tr("source equivalents"), jsonData.value(QStringLiteral("source_equivalent_target_lang")).toObject());
+        appendObject(tr("target equivalents"), jsonData.value(QStringLiteral("target_equivalent_source_lang")).toObject());
+        appendArray(tr("source synonyms"), m_source, jsonData.value(QStringLiteral("source_synonyms")).toArray());
+        appendArray(tr("synonyms"), translatedText, jsonData.value(QStringLiteral("target_synonyms")).toArray());
+        appendArray(tr("source antonyms"), m_source, jsonData.value(QStringLiteral("source_antonyms")).toArray());
+        appendArray(tr("antonyms"), translatedText, jsonData.value(QStringLiteral("target_antonyms")).toArray());
+
+        for (const QJsonValue &value : jsonData.value(QStringLiteral("word_choices")).toArray()) {
+            const QString word = value.toObject().value(QStringLiteral("word")).toString();
+            if (!word.isEmpty())
+                m_translationOptions[tr("alternatives")].append({word, QString(), {}});
+        }
+    }
+
+    if (m_examplesEnabled) {
+        const auto cleanExample = [](QString text) {
+            return text.remove(QLatin1Char('<')).remove(QLatin1Char('>'));
+        };
+
+        for (const QJsonValue &value : jsonData.value(QStringLiteral("word_choices")).toArray()) {
+            const QJsonObject choice = value.toObject();
+            const QString word = choice.value(QStringLiteral("word")).toString();
+            const QString definition = cleanExample(choice.value(QStringLiteral("definition")).toString());
+            const QString example = cleanExample(choice.value(QStringLiteral("example")).toString());
+            if (!definition.isEmpty() || !example.isEmpty())
+                m_examples[word].append({example, definition});
+
+            const QJsonArray sourceExamples = choice.value(QStringLiteral("examples_source")).toArray();
+            const QJsonArray targetExamples = choice.value(QStringLiteral("examples_target")).toArray();
+            const int exampleCount = qMin(sourceExamples.size(), targetExamples.size());
+            for (int index = 0; index < exampleCount; ++index) {
+                m_examples[word].append({cleanExample(sourceExamples.at(index).toString()),
+                                         cleanExample(targetExamples.at(index).toString())});
+            }
         }
     }
 }
