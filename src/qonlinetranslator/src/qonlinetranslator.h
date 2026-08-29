@@ -533,6 +533,7 @@ private:
     // Other
     static QString languageApiCode(Engine engine, Language lang);
     static Language language(Engine engine, const QString &langCode);
+    QString mozhiLanguageApiCode(Language lang) const;
     static int getSplitIndex(const QString &untranslatedText, int limit);
     static bool isContainsSpace(const QString &text);
     static void addSpaceBetweenParts(QString &text);
@@ -574,7 +575,7 @@ private:
     QString m_errorString;
 
     QString m_mozhiUrl;
-    QString m_mozhiEngine = QStringLiteral("google");
+    QString m_mozhiEngine = QStringLiteral("yandex");
 
     QMap<QString, QVector<QOption>> m_translationOptions;
     QMap<QString, QVector<QExample>> m_examples;

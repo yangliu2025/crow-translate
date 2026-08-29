@@ -1224,8 +1224,8 @@ void QOnlineTranslator::requestMozhiTranslate()
     QUrl url(m_mozhiUrl + QStringLiteral("/api/translate"));
     QUrlQuery query;
     query.addQueryItem(QStringLiteral("engine"), m_mozhiEngine);
-    query.addQueryItem(QStringLiteral("from"), languageApiCode(Mozhi, m_sourceLang));
-    query.addQueryItem(QStringLiteral("to"), languageApiCode(Mozhi, m_translationLang));
+    query.addQueryItem(QStringLiteral("from"), mozhiLanguageApiCode(m_sourceLang));
+    query.addQueryItem(QStringLiteral("to"), mozhiLanguageApiCode(m_translationLang));
     query.addQueryItem(QStringLiteral("text"), sender()->property(s_textProperty).toString());
     url.setQuery(query);
 
@@ -1278,9 +1278,15 @@ void QOnlineTranslator::parseMozhiTranslate()
 
     const QString sourceTranslit = jsonData.value(QStringLiteral("source_transliteration")).toString();
     const QString targetTranslit = jsonData.value(QStringLiteral("target_transliteration")).toString();
-    if (m_sourceTranslitEnabled && !sourceTranslit.contains(QStringLiteral("not supported"), Qt::CaseInsensitive))
+    const auto isValidTransliteration = [](const QString &text) {
+        return !text.isEmpty()
+            && !text.contains(QStringLiteral("not supported"), Qt::CaseInsensitive)
+            && !text.contains(QStringLiteral("invalid"), Qt::CaseInsensitive)
+            && !text.contains(QStringLiteral("error"), Qt::CaseInsensitive);
+    };
+    if (m_sourceTranslitEnabled && isValidTransliteration(sourceTranslit))
         m_sourceTranslit.append(sourceTranslit);
-    if (m_translationTranslitEnabled && !targetTranslit.contains(QStringLiteral("not supported"), Qt::CaseInsensitive))
+    if (m_translationTranslitEnabled && isValidTransliteration(targetTranslit))
         m_translationTranslit.append(targetTranslit);
 
     if (m_translationOptionsEnabled) {
@@ -1605,6 +1611,15 @@ QOnlineTranslator::Language QOnlineTranslator::language(Engine engine, const QSt
     case Bing:
         return s_bingLanguageCodes.key(langCode, s_genericLanguageCodes.key(langCode, NoLanguage));
     case Mozhi: {
+        if (langCode == QLatin1String("zh") || langCode.compare(QLatin1String("zh-Hans"), Qt::CaseInsensitive) == 0)
+            return SimplifiedChinese;
+        if (langCode.compare(QLatin1String("zh-Hant"), Qt::CaseInsensitive) == 0)
+            return TraditionalChinese;
+        if (langCode.compare(QLatin1String("sr-Latn"), Qt::CaseInsensitive) == 0 || langCode.compare(QLatin1String("sr-Latin"), Qt::CaseInsensitive) == 0)
+            return SerbianLatin;
+        if (langCode.compare(QLatin1String("sr-Cyrl"), Qt::CaseInsensitive) == 0)
+            return SerbianCyrillic;
+
         const Language exactMatch = s_genericLanguageCodes.key(langCode, NoLanguage);
         if (exactMatch != NoLanguage)
             return exactMatch;
@@ -1613,6 +1628,24 @@ QOnlineTranslator::Language QOnlineTranslator::language(Engine engine, const QSt
     }
 
     Q_UNREACHABLE();
+}
+
+QString QOnlineTranslator::mozhiLanguageApiCode(Language lang) const
+{
+    if (m_mozhiEngine == QLatin1String("yandex")) {
+        switch (lang) {
+        case SimplifiedChinese:
+            return QStringLiteral("zh");
+        case Portuguese:
+            return QStringLiteral("pt-BR");
+        case SerbianLatin:
+            return QStringLiteral("sr-Latn");
+        default:
+            break;
+        }
+    }
+
+    return languageApiCode(Mozhi, lang);
 }
 
 // Get split index of the text according to the limit
