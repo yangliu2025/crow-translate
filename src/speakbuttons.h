@@ -28,7 +28,9 @@
 
 class AppSettings;
 class EdgeTts;
-class QTemporaryFile;
+class QFile;
+class QNetworkAccessManager;
+class QNetworkReply;
 
 namespace Ui
 {
@@ -74,13 +76,28 @@ private slots:
     void showEdgeTtsError(const QString &message);
 
 private:
+    friend class SpeakButtonsTest;
+
+    bool cacheAudio(const QByteArray &audio);
+    void downloadNextAudio();
+    void playCachedAudio();
+
     static QMediaPlayer *s_currentlyPlaying;
 
     Ui::SpeakButtons *ui;
     QMediaPlayer *m_mediaPlayer = nullptr;
     QMap<QOnlineTranslator::Language, QLocale::Country> m_googleRegions;
     EdgeTts *m_edgeTts;
-    QTemporaryFile *m_edgeAudioFile = nullptr;
+    QNetworkAccessManager *m_networkManager;
+    QNetworkReply *m_audioReply = nullptr;
+    QList<QMediaContent> m_pendingMedia;
+    QList<QFile *> m_audioFiles;
+    QString m_cachedText;
+    QOnlineTranslator::Language m_cachedLanguage = QOnlineTranslator::NoLanguage;
+    QOnlineTranslator::Engine m_cachedEngine = QOnlineTranslator::Google;
+    QLocale::Country m_cachedRegion = QLocale::AnyCountry;
+    bool m_audioLoading = false;
+    bool m_audioCached = false;
 };
 
 #endif // PLAYERBUTTONS_H

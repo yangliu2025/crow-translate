@@ -23,10 +23,15 @@
 #include "edgetts.h"
 #include "settings/appsettings.h"
 
-#include <QDir>
+#include <QFile>
 #include <QMediaPlaylist>
 #include <QMessageBox>
-#include <QTemporaryFile>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QTimer>
+
+#include <sys/mman.h>
+#include <unistd.h>
 
 QMediaPlayer *SpeakButtons::s_currentlyPlaying = nullptr;
 
@@ -34,6 +39,7 @@ SpeakButtons::SpeakButtons(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::SpeakButtons)
     , m_edgeTts(new EdgeTts(this))
+    , m_networkManager(new QNetworkAccessManager(this))
 {
     ui->setupUi(this);
 
@@ -115,8 +121,29 @@ void SpeakButtons::speak(const QString &text, QOnlineTranslator::Language lang, 
         return;
     }
 
+    const QLocale::Country region = engine == QOnlineTranslator::Google ? m_googleRegions.value(lang) : QLocale::AnyCountry;
+    if (text == m_cachedText && lang == m_cachedLanguage && engine == m_cachedEngine && region == m_cachedRegion) {
+        if (m_audioLoading)
+            return;
+        if (m_audioCached && m_mediaPlayer->error() == QMediaPlayer::NoError) {
+            playCachedAudio();
+            return;
+        }
+    }
+
+    stopSpeaking();
+    playlist()->clear();
+    qDeleteAll(m_audioFiles);
+    m_audioFiles.clear();
+    m_audioCached = false;
+    m_cachedText = text;
+    m_cachedLanguage = lang;
+    m_cachedEngine = engine;
+    m_cachedRegion = region;
+
     if (engine == QOnlineTranslator::Bing || engine == QOnlineTranslator::Mozhi) {
-        playlist()->clear();
+        m_audioLoading = true;
+        ui->stopButton->setEnabled(true);
         m_edgeTts->synthesize(text, lang);
         return;
     }
@@ -130,11 +157,10 @@ void SpeakButtons::speak(const QString &text, QOnlineTranslator::Language lang, 
         return;
     }
 
-    // Use playlist to split long queries due engines limit
-    const QList<QMediaContent> media = onlineTts.media();
-    playlist()->clear();
-    playlist()->addMedia(media);
-    m_mediaPlayer->play();
+    m_pendingMedia = onlineTts.media();
+    m_audioLoading = true;
+    ui->stopButton->setEnabled(true);
+    downloadNextAudio();
 }
 
 void SpeakButtons::pauseSpeaking()
@@ -152,8 +178,17 @@ void SpeakButtons::playPauseSpeaking()
 
 void SpeakButtons::stopSpeaking()
 {
+    m_audioLoading = false;
     m_edgeTts->abort();
+    if (m_audioReply != nullptr) {
+        QNetworkReply *reply = m_audioReply;
+        m_audioReply = nullptr;
+        reply->abort();
+        reply->deleteLater();
+    }
+    m_pendingMedia.clear();
     m_mediaPlayer->stop();
+    ui->stopButton->setEnabled(false);
 }
 
 void SpeakButtons::loadPlayerState(QMediaPlayer::State state)
@@ -201,20 +236,90 @@ void SpeakButtons::onPlayerPositionChanged(qint64 position)
 
 void SpeakButtons::playEdgeAudio(const QByteArray &audio)
 {
-    playlist()->clear();
-    delete m_edgeAudioFile;
-    m_edgeAudioFile = new QTemporaryFile(QDir::tempPath() + QStringLiteral("/crow-edge-tts-XXXXXX.mp3"), this);
-    if (!m_edgeAudioFile->open() || m_edgeAudioFile->write(audio) != audio.size()) {
-        showEdgeTtsError(tr("Unable to create a temporary audio file"));
+    if (!m_audioLoading || !cacheAudio(audio))
         return;
-    }
-    m_edgeAudioFile->close();
 
-    playlist()->addMedia(QUrl::fromLocalFile(m_edgeAudioFile->fileName()));
-    m_mediaPlayer->play();
+    m_audioLoading = false;
+    m_audioCached = true;
+    playCachedAudio();
 }
 
 void SpeakButtons::showEdgeTtsError(const QString &message)
 {
+    m_audioLoading = false;
+    m_audioCached = false;
+    m_pendingMedia.clear();
+    playlist()->clear();
+    qDeleteAll(m_audioFiles);
+    m_audioFiles.clear();
+    ui->stopButton->setEnabled(false);
     QMessageBox::critical(this, tr("Unable to generate audio"), message);
+}
+
+bool SpeakButtons::cacheAudio(const QByteArray &audio)
+{
+    if (audio.isEmpty()) {
+        showEdgeTtsError(tr("No audio received"));
+        return false;
+    }
+
+    const int descriptor = memfd_create("crow-tts.mp3", MFD_CLOEXEC);
+    if (descriptor == -1) {
+        showEdgeTtsError(tr("Unable to create an audio buffer"));
+        return false;
+    }
+
+    auto *audioFile = new QFile(this);
+    if (!audioFile->open(descriptor, QIODevice::ReadWrite, QFileDevice::AutoCloseHandle)) {
+        ::close(descriptor);
+        delete audioFile;
+        showEdgeTtsError(tr("Unable to open the audio buffer"));
+        return false;
+    }
+    if (audioFile->write(audio) != audio.size() || !audioFile->flush()) {
+        delete audioFile;
+        showEdgeTtsError(tr("Unable to write to the audio buffer"));
+        return false;
+    }
+
+    m_audioFiles.append(audioFile);
+    playlist()->addMedia(QUrl::fromLocalFile(QStringLiteral("/proc/self/fd/%1").arg(descriptor)));
+    return true;
+}
+
+void SpeakButtons::downloadNextAudio()
+{
+    if (m_pendingMedia.isEmpty()) {
+        m_audioLoading = false;
+        m_audioCached = !m_audioFiles.isEmpty();
+        if (m_audioCached)
+            playCachedAudio();
+        return;
+    }
+
+    QNetworkRequest request = m_pendingMedia.takeFirst().request();
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    QNetworkReply *reply = m_networkManager->get(request);
+    m_audioReply = reply;
+    QTimer::singleShot(30000, reply, &QNetworkReply::abort);
+    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+        reply->deleteLater();
+        if (m_audioReply != reply)
+            return;
+        m_audioReply = nullptr;
+
+        if (reply->error() != QNetworkReply::NoError) {
+            showEdgeTtsError(reply->errorString());
+            return;
+        }
+        if (cacheAudio(reply->readAll()))
+            downloadNextAudio();
+    });
+}
+
+void SpeakButtons::playCachedAudio()
+{
+    playlist()->setCurrentIndex(0);
+    m_mediaPlayer->setPosition(0);
+    m_mediaPlayer->play();
 }

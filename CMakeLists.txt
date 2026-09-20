@@ -56,6 +56,7 @@ endif()
 
 option(WITH_PORTABLE_MODE "Enable portable functionality" OFF)
 option(WITH_KWAYLAND "Use KWayland for better Wayland integration" ON)
+option(BUILD_TESTING "Build audio playback tests" OFF)
 
 find_package(ECM REQUIRED NO_MODULE)
 list(APPEND CMAKE_MODULE_PATH ${ECM_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
@@ -233,3 +234,24 @@ ecm_install_icons(ICONS
     data/icons/app/sc-status-crow-translate-tray-light.svg
     DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons
 )
+
+if(BUILD_TESTING)
+    enable_testing()
+    find_package(Qt5 REQUIRED COMPONENTS Test)
+
+    add_executable(speakbuttons-test
+        tests/speakbuttons_test.cpp
+        src/edgetts.cpp
+        src/speakbuttons.cpp
+        src/speakbuttons.ui
+    )
+    target_include_directories(speakbuttons-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(speakbuttons-test PRIVATE
+        QOnlineTranslator::QOnlineTranslator
+        Qt5::Widgets
+        Qt5::WebSockets
+        Qt5::Test
+    )
+    add_test(NAME speakbuttons-cache COMMAND speakbuttons-test)
+    set_tests_properties(speakbuttons-cache PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
