@@ -331,6 +331,22 @@ private slots:
         QCOMPARE(translationButtons.m_cachedText, QStringLiteral("hallo"));
         translationButtons.stopSpeaking();
     }
+
+    void edgeSecMsGecV2Token()
+    {
+        QCOMPARE(
+            EdgeTts::secMsGec(0),
+            QStringLiteral("52BC7A17B50DFEC9-28C4394775C8751CD2F6859C030C06DB1489ACAB3B3A7651831FC26895177ED6"));
+        QCOMPARE(
+            EdgeTts::secMsGec(1700000000),
+            QStringLiteral("2CD23A2CA0B2595A-F3C846C370E05F9CC83ACC5F995C5F5D87A4D0F14CE8936A0F902E64099E38A2"));
+        QCOMPARE(
+            EdgeTts::secMsGec(1793146278),
+            QStringLiteral("FBEF5E395A19E4A4-97ACC9ABB9EBBFE9224280EDCC6D55116C5A304F33D3116778BC7DB1AC812FCD"));
+        QCOMPARE(
+            EdgeTts::secMsGec(2000000123),
+            QStringLiteral("498DEBEC091E9FBB-48F566F30D363EA955F305452BB7D7029DA9E2E43FF809AEEF3ACB5964B2A49B"));
+    }
 };
 
 QTEST_MAIN(SpeakButtonsTest)

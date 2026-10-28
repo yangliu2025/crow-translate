@@ -4,6 +4,7 @@
 #include "qonlinetranslator.h"
 
 #include <QByteArray>
+#include <QDateTime>
 #include <QObject>
 #include <QPointer>
 
@@ -16,6 +17,7 @@ class EdgeTts : public QObject
 {
     Q_OBJECT
     Q_DISABLE_COPY(EdgeTts)
+    friend class SpeakButtonsTest;
 
 public:
     explicit EdgeTts(QObject *parent = nullptr);
@@ -29,7 +31,7 @@ signals:
 
 private:
     void requestVoices();
-    void openSocket(const QString &voice);
+    void openSocket(const QString &voice, qint64 unixTimestamp);
     void sendSynthesisRequests(const QString &voice);
     void handleBinaryMessage(const QByteArray &message);
     void handleTextMessage(const QString &message);
@@ -38,7 +40,7 @@ private:
     static QByteArray browserUserAgent();
     static QString connectionId();
     static QString muid();
-    static QString secMsGec();
+    static QString secMsGec(qint64 unixTimestamp = QDateTime::currentSecsSinceEpoch());
     static QString timestamp();
     static QString sanitizeText(QString text);
 
