@@ -42,6 +42,16 @@
          </widget>
         </item>
         <item>
+         <widget class="QToolButton" name="mergeLinesButton">
+          <property name="text">
+           <string>Merge lines</string>
+          </property>
+          <property name="toolTip">
+           <string>Remove one line break and whitespace between line breaks in each group</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QToolButton" name="delayedRecognizeScreenAreaButton">
           <property name="toolTip">
            <string>Recognize screen area with delay</string>
@@ -325,6 +335,7 @@
   <tabstop>translateButton</tabstop>
   <tabstop>abortButton</tabstop>
   <tabstop>copySourceButton</tabstop>
+  <tabstop>mergeLinesButton</tabstop>
   <tabstop>autoTranslateCheckBox</tabstop>
   <tabstop>engineComboBox</tabstop>
   <tabstop>copyTranslationButton</tabstop>

@@ -56,7 +56,7 @@ endif()
 
 option(WITH_PORTABLE_MODE "Enable portable functionality" OFF)
 option(WITH_KWAYLAND "Use KWayland for better Wayland integration" ON)
-option(BUILD_TESTING "Build audio playback tests" OFF)
+option(BUILD_TESTING "Build application tests" OFF)
 
 find_package(ECM REQUIRED NO_MODULE)
 list(APPEND CMAKE_MODULE_PATH ${ECM_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
@@ -254,4 +254,18 @@ if(BUILD_TESTING)
     )
     add_test(NAME speakbuttons-cache COMMAND speakbuttons-test)
     set_tests_properties(speakbuttons-cache PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    add_executable(sourcetextedit-test
+        tests/sourcetextedit_test.cpp
+        src/sourcetextedit.cpp
+        src/contextmenu.cpp
+    )
+    target_include_directories(sourcetextedit-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(sourcetextedit-test PRIVATE
+        QOnlineTranslator::QOnlineTranslator
+        Qt5::Widgets
+        Qt5::Test
+    )
+    add_test(NAME sourcetextedit-merge-lines COMMAND sourcetextedit-test)
+    set_tests_properties(sourcetextedit-merge-lines PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()

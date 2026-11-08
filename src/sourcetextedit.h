@@ -42,6 +42,7 @@ public:
 
 public slots:
     void stopEditTimer();
+    void mergeLines();
 
 signals:
     void textEdited();

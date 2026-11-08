@@ -220,6 +220,14 @@
   <context>
     <name>MainWindow</name>
     <message>
+      <source>Merge lines</source>
+      <translation>融合換行</translation>
+    </message>
+    <message>
+      <source>Remove one line break and whitespace between line breaks in each group</source>
+      <translation>每組連續換行移除一個換行及換行之間的所有空白字元</translation>
+    </message>
+    <message>
       <location filename="../../src/mainwindow.ui" line="36"/>
       <source>Copy source text to the clipboard</source>
       <translation>複製原文到剪貼簿</translation>

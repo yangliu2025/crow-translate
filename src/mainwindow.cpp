@@ -108,6 +108,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->sourceLanguagesWidget, &LanguageButtonsWidget::buttonChecked, this, &MainWindow::checkLanguageButton);
     connect(ui->translationLanguagesWidget, &LanguageButtonsWidget::buttonChecked, this, &MainWindow::checkLanguageButton);
     connect(ui->sourceEdit, &SourceTextEdit::textChanged, this, &MainWindow::resetAutoSourceButtonText);
+    connect(ui->mergeLinesButton, &QToolButton::clicked, ui->sourceEdit, &SourceTextEdit::mergeLines);
 
     // OCR logic
     connect(m_screenGrabber, &AbstractScreenGrabber::grabbed, m_snippingArea, &SnippingArea::snip);

@@ -46,6 +46,18 @@
 - D-Bus API
 - Built for Linux desktops
 
+### Merging input lines
+
+Click **Merge lines** next to the source copy button to remove one line break
+from each group of consecutive line breaks in the input. Blank lines containing
+only whitespace count as part of the same group, and that whitespace is removed
+on the first click. For example, `one\ntwo\n \t\n \nthree` becomes
+`one two\n\nthree`, then `one two\nthree`, and finally `one two three`.
+Single line breaks between words become spaces; whitespace outside consecutive
+line breaks is preserved.
+Each click can be undone with **Ctrl+Z**, and auto-translation, if enabled, uses
+the updated input.
+
 ## Default keyboard shortcuts
 
 You can change them in the settings. Some key sequences may not be available due to OS limitations.

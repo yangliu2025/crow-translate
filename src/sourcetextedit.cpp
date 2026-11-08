@@ -21,6 +21,7 @@
 
 #include "contextmenu.h"
 
+#include <QRegularExpression>
 #include <QTimer>
 
 using namespace std::chrono_literals;
@@ -77,6 +78,38 @@ void SourceTextEdit::replaceText(const QString &text)
 void SourceTextEdit::removeText()
 {
     replaceText({});
+}
+
+void SourceTextEdit::mergeLines()
+{
+    const QString text = toPlainText();
+    static const QRegularExpression breaks(QStringLiteral("\\n(?:[^\\S\\n]*\\n)*"),
+        QRegularExpression::UseUnicodePropertiesOption);
+    QList<QRegularExpressionMatch> matches;
+    auto iterator = breaks.globalMatch(text);
+    while (iterator.hasNext())
+        matches.append(iterator.next());
+    if (matches.isEmpty())
+        return;
+
+    QTextCursor cursor = textCursor();
+    cursor.beginEditBlock();
+    for (auto it = matches.crbegin(); it != matches.crend(); ++it) {
+        const int start = it->capturedStart();
+        const int lineBreakCount = it->captured().count(QLatin1Char('\n'));
+        cursor.setPosition(start);
+        cursor.setPosition(start + it->capturedLength(), QTextCursor::KeepAnchor);
+        if (lineBreakCount > 1) {
+            cursor.insertText(QString(lineBreakCount - 1, QLatin1Char('\n')));
+        } else if (start > 0 && start + 1 < text.size()
+            && !text.at(start - 1).isSpace() && !text.at(start + 1).isSpace()) {
+            cursor.insertText(QStringLiteral(" "));
+        } else {
+            cursor.removeSelectedText();
+        }
+    }
+    cursor.endEditBlock();
+    setFocus();
 }
 
 void SourceTextEdit::stopEditTimer()
